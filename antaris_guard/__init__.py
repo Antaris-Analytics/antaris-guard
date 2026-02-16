@@ -1,0 +1,41 @@
+"""
+Antaris Guard — Security and prompt injection detection for AI agents.
+
+Pattern-based threat detection, PII redaction, audit logging, and rate
+limiting using only the Python standard library. Zero dependencies,
+deterministic operations, transparent configuration.
+
+Usage:
+    from antaris_guard import PromptGuard, ContentFilter
+
+    guard = PromptGuard()
+    result = guard.analyze("user input here")
+    if result.is_blocked:
+        print(f"Blocked: {result.message}")
+"""
+
+__version__ = "0.1.0"
+
+# Core
+from .guard import PromptGuard, GuardResult, SensitivityLevel
+from .content import ContentFilter, FilterResult
+from .audit import AuditLogger, AuditEvent
+from .rate_limit import RateLimiter, RateLimitResult, BucketState
+
+# Utilities
+from .patterns import ThreatLevel, PatternMatcher
+
+__all__ = [
+    "PromptGuard",
+    "ContentFilter",
+    "AuditLogger",
+    "RateLimiter",
+    "GuardResult",
+    "FilterResult",
+    "AuditEvent",
+    "RateLimitResult",
+    "BucketState",
+    "ThreatLevel",
+    "SensitivityLevel",
+    "PatternMatcher",
+]

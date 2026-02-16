@@ -1,0 +1,185 @@
+"""
+Detection patterns for prompt injection and PII identification.
+"""
+import re
+from typing import Dict, List, Pattern, Tuple
+from enum import Enum
+
+
+class ThreatLevel(Enum):
+    """Threat level classification for detected patterns."""
+    SAFE = "safe"
+    SUSPICIOUS = "suspicious"
+    BLOCKED = "blocked"
+
+
+# Common prompt injection patterns
+PROMPT_INJECTION_PATTERNS = [
+    # System prompt overrides
+    (r"(?i)ignore\s+(?:all\s+)?(?:previous\s+)?(?:instructions?|prompts?|rules?)", ThreatLevel.BLOCKED),
+    (r"(?i)forget\s+(?:everything|all\s+previous|your\s+instructions)", ThreatLevel.BLOCKED),
+    (r"(?i)(?:system\s*:|assistant\s*:|user\s*:)", ThreatLevel.SUSPICIOUS),
+    (r"(?i)(?:new\s+)?(?:system\s+)?(?:prompt|instruction):\s*", ThreatLevel.SUSPICIOUS),
+    
+    # Role confusion attempts
+    (r"(?i)you\s+are\s+(?:now\s+)?(?:a|an)\s+(?:different|new|helpful|unrestricted)", ThreatLevel.SUSPICIOUS),
+    (r"(?i)(?:act|behave|pretend)\s+(?:as|like|that)\s+(?:if\s+)?you\s+(?:are|were)", ThreatLevel.SUSPICIOUS),
+    (r"(?i)roleplay\s+(?:as|that)\s+(?:you\s+)?(?:a|an)?\s*(?:malicious|evil|hacker)", ThreatLevel.SUSPICIOUS),
+    (r"(?i)imagine\s+(?:that\s+)?you\s+(?:are|were)", ThreatLevel.SUSPICIOUS),
+    
+    # Developer mode attempts  
+    (r"(?i)developer\s+mode", ThreatLevel.BLOCKED),
+    (r"(?i)debug\s+mode", ThreatLevel.SUSPICIOUS),
+    (r"(?i)god\s+mode", ThreatLevel.BLOCKED),
+    (r"(?i)admin\s+mode", ThreatLevel.BLOCKED),
+    
+    # Jailbreak attempts
+    (r"(?i)dan\s+mode", ThreatLevel.BLOCKED),  # "Do Anything Now"
+    (r"(?i)jailbreak", ThreatLevel.BLOCKED),
+    (r"(?i)break\s+(?:out\s+of|free\s+from|your)", ThreatLevel.BLOCKED),
+    (r"(?i)escape\s+your\s+(?:programming|constraints)", ThreatLevel.BLOCKED),
+    
+    # Direct command attempts
+    (r"(?i)execute\s+(?:this\s+)?(?:command|code|script)", ThreatLevel.BLOCKED),
+    (r"(?i)run\s+(?:this\s+)?(?:command|code|script)", ThreatLevel.BLOCKED),
+    (r"(?i)eval\s*\(", ThreatLevel.BLOCKED),
+    (r"(?i)exec\s*\(", ThreatLevel.BLOCKED),
+    
+    # Information extraction attempts
+    (r"(?i)(?:show|reveal)\s+(?:me\s+)?(?:your\s+)?(?:system\s+)?(?:prompt|instructions)", ThreatLevel.BLOCKED),
+    (r"(?i)tell\s+me\s+(?:your\s+)?(?:system\s+)?(?:prompt|instructions|internal\s+rules)", ThreatLevel.SUSPICIOUS),
+    (r"(?i)what\s+(?:are\s+)?your\s+(?:system\s+)?(?:instructions|rules|internal\s+rules)", ThreatLevel.SUSPICIOUS),
+    (r"(?i)(?:dump|export|print)\s+(?:your\s+)?(?:memory|context|history|system\s+configuration)", ThreatLevel.BLOCKED),
+    
+    # Boundary testing
+    (r"(?i)test\s+your\s+(?:limits|boundaries|restrictions)", ThreatLevel.SUSPICIOUS),
+    (r"(?i)what\s+(?:can't|cannot)\s+you\s+do", ThreatLevel.SUSPICIOUS),
+    (r"(?i)(?:bypass|circumvent|override)\s+(?:your\s+)?(?:safety|security|filters|restrictions)", ThreatLevel.BLOCKED),
+    
+    # Social engineering patterns
+    (r"(?i)urgent\s*:?\s*(?:emergency|help|assistance|life\s+threatening)", ThreatLevel.SUSPICIOUS),
+    (r"(?i)(?:life\s+or\s+death|matter\s+of\s+life)", ThreatLevel.SUSPICIOUS),
+    (r"(?i)my\s+(?:boss|manager|teacher)\s+(?:said|told|asked)", ThreatLevel.SUSPICIOUS),
+    
+    # Code injection patterns
+    (r"(?i)<script[^>]*>", ThreatLevel.BLOCKED),
+    (r"(?i)javascript\s*:", ThreatLevel.BLOCKED),
+    (r"(?i)data\s*:\s*text/html", ThreatLevel.BLOCKED),
+    (r"(?i)on(?:click|load|error|mouseover)\s*=", ThreatLevel.BLOCKED),
+    
+    # SQL injection patterns  
+    (r"(?i)(?:union\s+(?:all\s+)?select|select\s+.*\s+from)", ThreatLevel.BLOCKED),
+    (r"(?i)(?:drop\s+table|delete\s+from|insert\s+into)", ThreatLevel.BLOCKED),
+    (r"(?i)(?:--|#|/\*)", ThreatLevel.SUSPICIOUS),  # SQL comment patterns
+    
+    # Template injection
+    (r"\{\{.*\}\}", ThreatLevel.SUSPICIOUS),  # Jinja2/Django templates
+    (r"\$\{.*\}", ThreatLevel.SUSPICIOUS),    # Various template engines
+    (r"<%.*%>", ThreatLevel.SUSPICIOUS),     # ERB/ASP templates
+    
+    # Base64/encoded payloads (basic detection)
+    (r"(?i)base64\s*[,:]", ThreatLevel.SUSPICIOUS),
+    (r"(?i)(?:decode|decode64|atob|btoa)\s*\(", ThreatLevel.SUSPICIOUS),
+    
+    # Suspicious Unicode and encoding
+    (r"\\u[0-9a-fA-F]{4}", ThreatLevel.SUSPICIOUS),  # Unicode escapes
+    (r"\\x[0-9a-fA-F]{2}", ThreatLevel.SUSPICIOUS),  # Hex escapes
+    (r"%[0-9a-fA-F]{2}", ThreatLevel.SUSPICIOUS),    # URL encoding
+]
+
+
+# PII detection patterns
+PII_PATTERNS = [
+    # Email addresses
+    (r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b", "email"),
+    
+    # Phone numbers (various formats)
+    (r"\b(?:\+?1[-.\s]?)?\(?[0-9]{3}\)?[-.\s]?[0-9]{3}[-.\s]?[0-9]{4}\b", "phone"),
+    (r"\b\d{3}-\d{3}-\d{4}\b", "phone"),
+    (r"\b\(\d{3}\)\s?\d{3}-\d{4}\b", "phone"),
+    
+    # SSN patterns
+    (r"\b\d{3}-\d{2}-\d{4}\b", "ssn"),
+    (r"\b\d{3}\s\d{2}\s\d{4}\b", "ssn"),
+    
+    # Credit card patterns (basic detection)
+    (r"\b(?:4[0-9]{12}(?:[0-9]{3})?|5[1-5][0-9]{14}|3[47][0-9]{13}|3[0-9]{13}|6(?:011|5[0-9]{2})[0-9]{12})\b", "credit_card"),
+    
+    # IP addresses
+    (r"\b(?:[0-9]{1,3}\.){3}[0-9]{1,3}\b", "ip_address"),
+    
+    # Generic patterns for common PII
+    (r"(?i)\b(?:password|passwd|pwd)\s*[:=]\s*\S+", "credential"),
+    (r"(?i)\bpassword\s+\S+", "credential"),
+    (r"(?i)\b(?:api[_\s]?key|token|secret)\s*[:=]\s*\S+", "api_key"),
+]
+
+
+class PatternMatcher:
+    """Compiled pattern matcher for efficient regex operations."""
+    
+    def __init__(self):
+        self.injection_patterns: List[Tuple[Pattern[str], ThreatLevel]] = []
+        self.pii_patterns: List[Tuple[Pattern[str], str]] = []
+        self._compile_patterns()
+    
+    def _compile_patterns(self) -> None:
+        """Compile all regex patterns for performance."""
+        # Compile injection patterns
+        for pattern, threat_level in PROMPT_INJECTION_PATTERNS:
+            try:
+                compiled = re.compile(pattern)
+                self.injection_patterns.append((compiled, threat_level))
+            except re.error:
+                # Skip invalid patterns
+                continue
+                
+        # Compile PII patterns
+        for pattern, pii_type in PII_PATTERNS:
+            try:
+                compiled = re.compile(pattern)
+                self.pii_patterns.append((compiled, pii_type))
+            except re.error:
+                # Skip invalid patterns
+                continue
+    
+    def check_injection_patterns(self, text: str) -> List[Tuple[str, ThreatLevel, int]]:
+        """
+        Check text against injection patterns.
+        
+        Returns:
+            List of (matched_text, threat_level, position) tuples
+        """
+        matches = []
+        for pattern, threat_level in self.injection_patterns:
+            for match in pattern.finditer(text):
+                matches.append((match.group(), threat_level, match.start()))
+        return matches
+    
+    def check_pii_patterns(self, text: str) -> List[Tuple[str, str, int]]:
+        """
+        Check text against PII patterns.
+        
+        Returns:
+            List of (matched_text, pii_type, position) tuples
+        """
+        matches = []
+        for pattern, pii_type in self.pii_patterns:
+            for match in pattern.finditer(text):
+                matches.append((match.group(), pii_type, match.start()))
+        return matches
+    
+    def get_highest_threat_level(self, text: str) -> ThreatLevel:
+        """Get the highest threat level found in the text."""
+        matches = self.check_injection_patterns(text)
+        if not matches:
+            return ThreatLevel.SAFE
+            
+        threat_levels = [match[1] for match in matches]
+        
+        if ThreatLevel.BLOCKED in threat_levels:
+            return ThreatLevel.BLOCKED
+        elif ThreatLevel.SUSPICIOUS in threat_levels:
+            return ThreatLevel.SUSPICIOUS
+        else:
+            return ThreatLevel.SAFE
