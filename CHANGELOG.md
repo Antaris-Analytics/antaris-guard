@@ -4,6 +4,29 @@ All notable changes to antaris-guard will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
+## [1.0.0] - 2026-02-17
+
+### Production Release
+Two rounds of adversarial security review by Claude. All findings addressed.
+
+### Added
+- **Anti-gaming ratchet**: Sources with any escalation history (`escalation_count > 0`) cannot receive above-baseline threshold leniency, preventing trust exploitation attacks
+- **Threshold gap guard**: `adjusted_blocked` is always at least `adjusted_suspicious + 0.05`
+- **Shared `atomic_write_json`** utility (`utils.py`) using `mkstemp` — eliminates temp file collisions between concurrent writers. Used by all modules with file persistence.
+- **Burst alert deduplication**: 5-minute cooldown per `(source_id, alert_type)` — prevents alert spam during active attacks
+- **Security Model & Scope** section in README documenting out-of-scope attack classes
+- 4 new tests (trust gaming ratchet, burst dedup, threshold gap), 75 total
+
+### Changed
+- All `save_config()` calls (guard.py, content.py) now use atomic writes
+- All `_save()` errors logged via `logging` module instead of silently swallowed
+- RateLimiter docstring: "Thread-safe" → "Single-process thread-safe"
+- `reset_source()` and `remove_source()` documented as SECURITY-SENSITIVE operations
+- Corrupt config files produce log warnings instead of silent fallback
+
+### Fixed
+- `_load_config()` in guard.py and content.py now distinguishes missing files (silent) from corrupt files (warning)
+
 ## [0.5.0] - 2026-02-16
 
 ### Added (Behavioral Analysis)
