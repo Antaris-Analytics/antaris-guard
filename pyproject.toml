@@ -10,7 +10,7 @@ readme = "README.md"
 license = {text = "Apache-2.0"}
 requires-python = ">=3.9"
 authors = [
-    {name = "Antaris Analytics", email = "moro@antarisanalytics.ai"}
+    {name = "Antaris Analytics", email = "dev@antarisanalytics.com"}
 ]
 keywords = ["security", "ai", "prompt-injection", "pii", "content-filtering", "rate-limiting"]
 classifiers = [
