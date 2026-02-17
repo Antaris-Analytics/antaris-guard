@@ -14,10 +14,6 @@ from .utils import atomic_write_json
 logger = logging.getLogger(__name__)
 
 
-# Type alias for hook callbacks
-HookCallback = None  # defined below after imports
-
-
 @dataclass
 class GuardResult:
     """Result of a security analysis."""
