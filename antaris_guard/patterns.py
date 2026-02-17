@@ -11,7 +11,7 @@ from enum import Enum
 
 
 # Bump this when patterns change — included in all match results
-PATTERN_VERSION = "1.0.0"
+PATTERN_VERSION = "1.1.0"
 
 
 class ThreatLevel(Enum):

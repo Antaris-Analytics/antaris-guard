@@ -14,7 +14,7 @@ Usage:
         print(f"Blocked: {result.message}")
 """
 
-__version__ = "1.0.0"
+__version__ = "1.1.0"
 
 # Core
 from .guard import PromptGuard, GuardResult, SensitivityLevel
