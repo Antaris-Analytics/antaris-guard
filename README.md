@@ -282,7 +282,7 @@ filter.enable_detection('credit_card')
 | Prompt analysis (safe) | ~55,000 texts/sec | Average 100 chars |
 | Prompt analysis (malicious) | ~45,000 texts/sec | With pattern matches |
 | PII detection | ~150,000 texts/sec | Mixed content |
-| Content filtering | ~25,000 texts/sec | With redaction |
+| Content filtering | ~84,000 texts/sec | With redaction |
 | Rate limit check | ~100,000 ops/sec | In-memory buckets |
 
 **Memory usage:** ~5MB base footprint + ~100 bytes per active rate limit bucket
