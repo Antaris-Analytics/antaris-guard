@@ -27,7 +27,10 @@ from .reputation import ReputationTracker, ReputationProfile
 from .behavior import BehaviorAnalyzer, BehaviorAlert
 
 # Utilities
-from .patterns import ThreatLevel, PatternMatcher, PATTERN_VERSION
+from .patterns import (
+    ThreatLevel, PatternMatcher, PATTERN_VERSION,
+    PROMPT_INJECTION_PATTERNS, AGGRESSIVE_INJECTION_PATTERNS, PII_PATTERNS,
+)
 from .normalizer import normalize, normalize_light
 from .utils import atomic_write_json
 
@@ -49,6 +52,9 @@ __all__ = [
     "SensitivityLevel",
     "PatternMatcher",
     "PATTERN_VERSION",
+    "PROMPT_INJECTION_PATTERNS",
+    "AGGRESSIVE_INJECTION_PATTERNS",
+    "PII_PATTERNS",
     "normalize",
     "normalize_light",
 ]

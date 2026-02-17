@@ -13,6 +13,40 @@ from .utils import atomic_write_json
 logger = logging.getLogger(__name__)
 
 
+def _luhn_check(number_str: str) -> bool:
+    """
+    Validate a credit card number using the Luhn algorithm.
+    Returns True if the number passes the checksum.
+    """
+    digits = [int(d) for d in number_str if d.isdigit()]
+    if len(digits) < 13:
+        return False
+    # Reverse, double every second digit
+    total = 0
+    for i, d in enumerate(reversed(digits)):
+        if i % 2 == 1:
+            d *= 2
+            if d > 9:
+                d -= 9
+        total += d
+    return total % 10 == 0
+
+
+def _is_valid_ipv4(ip_str: str) -> bool:
+    """Validate that an IPv4 address has octets in 0-255 range."""
+    parts = ip_str.split('.')
+    if len(parts) != 4:
+        return False
+    for part in parts:
+        try:
+            val = int(part)
+            if val < 0 or val > 255:
+                return False
+        except ValueError:
+            return False
+    return True
+
+
 @dataclass
 class FilterResult:
     """Result of content filtering operation."""
@@ -34,18 +68,22 @@ class ContentFilter:
     - Custom pattern support
     """
     
-    def __init__(self, config_path: Optional[str] = None):
+    def __init__(self, config_path: Optional[str] = None,
+                 strict_validation: bool = True):
         """
         Initialize ContentFilter.
         
         Args:
             config_path: Path to JSON configuration file
+            strict_validation: If True, apply Luhn check for credit cards
+                               and range validation for IPs. Reduces false positives.
         """
         self.pattern_matcher = PatternMatcher()
         self.redaction_masks = self._default_masks()
         self.enabled_detections: Set[str] = set(['email', 'phone', 'ssn', 'credit_card', 'ip_address', 'api_key', 'credential'])
         self.custom_patterns: List[Tuple[str, str]] = []
         self.redaction_enabled = True
+        self.strict_validation = strict_validation
         
         # Load configuration if provided
         if config_path and os.path.exists(config_path):
@@ -139,14 +177,23 @@ class ContentFilter:
         # Check built-in patterns
         matches = self.pattern_matcher.check_pii_patterns(text)
         for match_text, pii_type, position in matches:
-            if pii_type in self.enabled_detections:
-                detections.append({
-                    'type': pii_type,
-                    'text': match_text,
-                    'position': position,
-                    'length': len(match_text),
-                    'end_position': position + len(match_text)
-                })
+            if pii_type not in self.enabled_detections:
+                continue
+            
+            # Strict validation: reduce false positives
+            if self.strict_validation:
+                if pii_type == 'credit_card' and not _luhn_check(match_text):
+                    continue
+                if pii_type == 'ip_address' and not _is_valid_ipv4(match_text):
+                    continue
+            
+            detections.append({
+                'type': pii_type,
+                'text': match_text,
+                'position': position,
+                'length': len(match_text),
+                'end_position': position + len(match_text)
+            })
         
         # Check custom patterns
         for pattern, pii_type in self.custom_patterns:

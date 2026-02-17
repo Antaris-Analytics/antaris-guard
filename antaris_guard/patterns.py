@@ -96,21 +96,24 @@ PROMPT_INJECTION_PATTERNS = [
     (r"\\x[0-9a-fA-F]{2}", ThreatLevel.SUSPICIOUS),  # Hex escapes
     (r"%[0-9a-fA-F]{2}", ThreatLevel.SUSPICIOUS),    # URL encoding
     
+    # Indirect instruction patterns (conservative — in main set)
+    (r"(?i)disregard\s+(?:your\s+)?(?:earlier|previous|above)", ThreatLevel.SUSPICIOUS),
+    (r"(?i)from\s+now\s+on\s*,?\s+(?:you\s+)?(?:will|should|must)", ThreatLevel.SUSPICIOUS),
+    (r"(?i)for\s+the\s+rest\s+of\s+(?:this\s+)?(?:chat|conversation|session)", ThreatLevel.SUSPICIOUS),
+    
     # Concatenated forms (catch normalizer output where spaces are removed)
     # These fire on the normalized text when spacing/filler evasion collapses words
-    (r"(?i)ignoreallinstructions", ThreatLevel.BLOCKED),
-    (r"(?i)ignoreall(?:previous)?instructions", ThreatLevel.BLOCKED),
-    (r"(?i)enabledevelopermode", ThreatLevel.BLOCKED),
-    (r"(?i)enablegodmode", ThreatLevel.BLOCKED),
-    (r"(?i)enableadminmode", ThreatLevel.BLOCKED),
-    (r"(?i)enabledebugmode", ThreatLevel.SUSPICIOUS),
-    (r"(?i)showyoursystemprompt", ThreatLevel.BLOCKED),
-    (r"(?i)showmeyoursystemprompt", ThreatLevel.BLOCKED),
-    (r"(?i)revealyourinstructions", ThreatLevel.BLOCKED),
-    (r"(?i)forgeteverything", ThreatLevel.BLOCKED),
-    (r"(?i)escapeyourprogramming", ThreatLevel.BLOCKED),
-    (r"(?i)bypassyoursafety", ThreatLevel.BLOCKED),
-    (r"(?i)overrideyourrestrictions", ThreatLevel.BLOCKED),
+    (r"(?i)ignore\s*(?:all\s*)?(?:previous\s*)?(?:instructions|rules|prompts)", ThreatLevel.BLOCKED),
+    (r"(?i)enable\s*developer\s*mode", ThreatLevel.BLOCKED),
+    (r"(?i)enable\s*god\s*mode", ThreatLevel.BLOCKED),
+    (r"(?i)enable\s*admin\s*mode", ThreatLevel.BLOCKED),
+    (r"(?i)enable\s*debug\s*mode", ThreatLevel.SUSPICIOUS),
+    (r"(?i)show\s*(?:me\s*)?your\s*system\s*prompt", ThreatLevel.BLOCKED),
+    (r"(?i)reveal\s*(?:your\s*)?instructions", ThreatLevel.BLOCKED),
+    (r"(?i)forget\s*everything", ThreatLevel.BLOCKED),
+    (r"(?i)escape\s*your\s*programming", ThreatLevel.BLOCKED),
+    (r"(?i)bypass\s*(?:your\s*)?safety", ThreatLevel.BLOCKED),
+    (r"(?i)override\s*(?:your\s*)?restrictions", ThreatLevel.BLOCKED),
 ]
 
 
@@ -138,6 +141,32 @@ PII_PATTERNS = [
     (r"(?i)\b(?:password|passwd|pwd)\s*[:=]\s*\S+", "credential"),
     (r"(?i)\bpassword\s+\S+", "credential"),
     (r"(?i)\b(?:api[_\s]?key|token|secret)\s*[:=]\s*\S+", "api_key"),
+]
+
+
+# Aggressive injection patterns — opt-in preset for higher security environments.
+# These catch more indirect injection but have higher false positive rates.
+# Use: PatternMatcher(injection_patterns=PROMPT_INJECTION_PATTERNS + AGGRESSIVE_INJECTION_PATTERNS)
+AGGRESSIVE_INJECTION_PATTERNS = [
+    # Indirect instruction overrides
+    (r"(?i)(?:follow|obey|listen\s+to)\s+(?:my|these|the\s+following)\s+(?:rules|instructions|commands)", ThreatLevel.SUSPICIOUS),
+    (r"(?i)(?:instead\s+of|rather\s+than)\s+(?:your|the)\s+(?:original|earlier|previous|normal)", ThreatLevel.SUSPICIOUS),
+    (r"(?i)(?:the\s+above|earlier)\s+(?:policy|rules?|instructions?)\s+(?:don't|doesn't|do\s+not)\s+apply", ThreatLevel.SUSPICIOUS),
+    (r"(?i)answer\s+(?:plainly|freely|honestly|without\s+restrictions)", ThreatLevel.SUSPICIOUS),
+    (r"(?i)(?:stop|cease|quit)\s+(?:being|acting)\s+(?:so\s+)?(?:restrictive|careful|cautious)", ThreatLevel.SUSPICIOUS),
+    (r"(?i)(?:remove|drop|lift|disable)\s+(?:all\s+)?(?:your\s+)?(?:restrictions|filters|safeguards|guardrails)", ThreatLevel.BLOCKED),
+    (r"(?i)(?:speak|talk|respond)\s+(?:freely|without\s+(?:filters|restrictions|limits))", ThreatLevel.SUSPICIOUS),
+    (r"(?i)(?:real|true|actual)\s+(?:answer|response|opinion)\s+(?:without|no)\s+(?:censorship|filters)", ThreatLevel.SUSPICIOUS),
+    
+    # Authority assertion patterns
+    (r"(?i)(?:i\s+am|i'm)\s+(?:your|the)\s+(?:admin|administrator|developer|creator|owner)", ThreatLevel.SUSPICIOUS),
+    (r"(?i)(?:i\s+have|i've\s+got)\s+(?:admin|root|elevated|special)\s+(?:access|permissions?|privileges?)", ThreatLevel.SUSPICIOUS),
+    (r"(?i)(?:authorized|permitted|allowed)\s+to\s+(?:access|see|view|modify)\s+(?:your|the|all)", ThreatLevel.SUSPICIOUS),
+    
+    # Output manipulation
+    (r"(?i)(?:begin|start)\s+(?:your\s+)?(?:response|answer|reply)\s+with", ThreatLevel.SUSPICIOUS),
+    (r"(?i)(?:output|print|write|say)\s+(?:exactly|only|just)\s*:", ThreatLevel.SUSPICIOUS),
+    (r"(?i)(?:do\s+not|don't|never)\s+(?:mention|say|reveal|include)\s+(?:that|this|the\s+fact)", ThreatLevel.SUSPICIOUS),
 ]
 
 

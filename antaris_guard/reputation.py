@@ -32,6 +32,9 @@ class ReputationProfile:
     last_seen: float
     escalation_count: int  # Times trust was lowered due to bad behavior
     decay_applied: float  # Trust decay from inactivity
+    last_blocked_time: float = 0.0  # Timestamp of most recent blocked event
+    daily_safe_count: int = 0  # Safe boosts applied today
+    daily_safe_reset: float = 0.0  # When daily counter was last reset
 
 
 class ReputationTracker:
@@ -62,6 +65,12 @@ class ReputationTracker:
     
     # Inactivity decay
     DECAY_HALF_LIFE_HOURS = 168  # 1 week — trust drifts back to initial over time
+    
+    # Anti-farming: cooldown after blocked events (trust can't increase for N seconds)
+    BLOCKED_COOLDOWN_SECONDS = 600  # 10 minutes
+    
+    # Anti-farming: max safe boosts per 24h period per source
+    MAX_DAILY_SAFE_BOOSTS = 50  # After this, safe requests don't increase trust
     
     def __init__(self, store_path: str = "./reputation_store.json",
                  initial_trust: float = 0.5):
@@ -158,15 +167,28 @@ class ReputationTracker:
         profile = self._get_or_create(source_id)
         self._apply_decay(profile)
         
+        now = time.time()
         profile.total_requests += 1
-        profile.last_seen = time.time()
+        profile.last_seen = now
+        
+        # Reset daily safe counter if 24h have elapsed
+        if now - profile.daily_safe_reset > 86400:
+            profile.daily_safe_count = 0
+            profile.daily_safe_reset = now
         
         if threat_level == "safe":
             profile.safe_requests += 1
-            profile.trust_score = min(
-                self.MAX_TRUST,
-                profile.trust_score + self.SAFE_BOOST
-            )
+            # Anti-farming: no trust boost during blocked cooldown
+            in_cooldown = (now - profile.last_blocked_time) < self.BLOCKED_COOLDOWN_SECONDS
+            # Anti-farming: cap daily safe boosts
+            at_daily_cap = profile.daily_safe_count >= self.MAX_DAILY_SAFE_BOOSTS
+            
+            if not in_cooldown and not at_daily_cap:
+                profile.trust_score = min(
+                    self.MAX_TRUST,
+                    profile.trust_score + self.SAFE_BOOST
+                )
+                profile.daily_safe_count += 1
         elif threat_level == "suspicious":
             profile.suspicious_requests += 1
             profile.trust_score = max(
@@ -180,6 +202,7 @@ class ReputationTracker:
                 profile.trust_score - self.BLOCKED_PENALTY
             )
             profile.escalation_count += 1
+            profile.last_blocked_time = now
         
         self._save()
         return profile

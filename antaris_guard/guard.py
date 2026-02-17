@@ -62,6 +62,9 @@ class PromptGuard:
         self.pattern_matcher = pattern_matcher or PatternMatcher()
         self.allowlist: Set[str] = set()
         self.blocklist: Set[str] = set()
+        # When True, allowlist/blocklist use whole-word matching instead of substring
+        self.allowlist_exact: bool = False
+        self.blocklist_exact: bool = False
         self.custom_patterns: List[tuple] = []
         
         # Integration hooks — callables invoked on specific events
@@ -187,13 +190,24 @@ class PromptGuard:
                 logger.warning("Hook %s raised: %s", event_key, e)
     
     def _check_allowlist(self, text: str) -> bool:
-        """Check if text is in allowlist."""
+        """
+        Check if text matches allowlist.
+        
+        WARNING: When allowlist_exact=False (default), this is substring-based.
+        Allowlisting a short string like "ignore" would disable injection
+        detection for any input containing that word. Use allowlist_exact=True
+        or allowlist full phrases to avoid this footgun.
+        """
         text_lower = text.lower().strip()
+        if self.allowlist_exact:
+            return text_lower in self.allowlist
         return any(allowed in text_lower for allowed in self.allowlist)
     
     def _check_blocklist(self, text: str) -> bool:
-        """Check if text is in blocklist.""" 
+        """Check if text matches blocklist.""" 
         text_lower = text.lower().strip()
+        if self.blocklist_exact:
+            return text_lower in self.blocklist
         return any(blocked in text_lower for blocked in self.blocklist)
     
     def _calculate_score(self, matches: List[tuple], text_length: int) -> float:
@@ -297,16 +311,26 @@ class PromptGuard:
             return result
         
         # Check against patterns (both original and normalized text)
+        # Track which matches came from original vs normalized
         matches = self.pattern_matcher.check_injection_patterns(text)
+        original_match_count = len(matches)
         
         # Also check normalized text for evasion attempts
         if normalized_text != text:
             normalized_matches = self.pattern_matcher.check_injection_patterns(normalized_text)
             # Add matches found only in normalized form (evasion detected)
-            existing_threats = {m[0].lower() for m in matches}
+            # Dedup by position range to avoid inflating score
+            existing_ranges = {(m[2], m[2] + len(m[0])) for m in matches}
             for match_text, threat_level, pos in normalized_matches:
-                if match_text.lower() not in existing_threats:
+                match_range = (pos, pos + len(match_text))
+                # Skip if overlapping with an existing match
+                overlaps = any(
+                    not (match_range[1] <= er[0] or match_range[0] >= er[1])
+                    for er in existing_ranges
+                )
+                if not overlaps:
                     matches.append((match_text, threat_level, pos))
+                    existing_ranges.add(match_range)
         
         # Check custom patterns
         for pattern, threat_level in self.custom_patterns:
@@ -331,12 +355,13 @@ class PromptGuard:
         
         # Format matches for result
         formatted_matches = []
-        for match_text, match_threat_level, position in matches:
+        for i, (match_text, match_threat_level, position) in enumerate(matches):
             formatted_matches.append({
                 'type': 'pattern_match',
                 'text': match_text,
                 'position': position,
-                'threat_level': match_threat_level.value
+                'threat_level': match_threat_level.value,
+                'source': 'original' if i < original_match_count else 'normalized',
             })
         
         # Generate message
