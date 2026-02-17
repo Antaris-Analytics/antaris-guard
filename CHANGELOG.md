@@ -14,7 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Custom pattern validation and testing tools
 - Machine learning model integration (optional)
 
-## [0.1.0] - 2024-12-16
+## [0.1.0] - 2026-02-16
 
 ### Added
 - **PromptGuard**: Pattern-based prompt injection detection
@@ -53,7 +53,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Zero external dependencies (Python stdlib only)
   - Thread-safe operations
   - Comprehensive error handling with graceful degradation
-  - Extensive test coverage (70+ test cases)
+  - 43 tests
   - Type hints throughout codebase
   - Consistent API design across components
 
@@ -106,7 +106,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Thread safety**: All components safe for concurrent use
 
 ### Testing
-- **70+ test cases** covering functionality and edge cases
+- **43 tests** covering functionality and edge cases
 - **Real injection patterns** tested against actual attack strings
 - **Integration tests** demonstrating multi-component workflows
 - **Performance benchmarks** for all major operations

@@ -96,7 +96,9 @@ class PromptGuard:
             ]
         }
         
-        os.makedirs(os.path.dirname(config_path), exist_ok=True)
+        dir_path = os.path.dirname(config_path)
+        if dir_path:
+            os.makedirs(dir_path, exist_ok=True)
         with open(config_path, 'w') as f:
             json.dump(config, f, indent=2)
     

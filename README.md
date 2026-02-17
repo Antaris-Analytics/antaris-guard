@@ -2,6 +2,8 @@
 
 **Zero-dependency Python package for AI agent security and prompt injection detection.**
 
+[![Tests](https://github.com/Antaris-Analytics/antaris-guard/actions/workflows/tests.yml/badge.svg)](https://github.com/Antaris-Analytics/antaris-guard/actions/workflows/tests.yml)
+[![PyPI](https://img.shields.io/pypi/v/antaris-guard)](https://pypi.org/project/antaris-guard/)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Python Version](https://img.shields.io/badge/python-3.9%2B-blue.svg)](https://www.python.org/downloads/)
 [![Zero Dependencies](https://img.shields.io/badge/dependencies-zero-green.svg)](https://pypi.org/project/antaris-guard/)
@@ -195,7 +197,7 @@ class TenantSecurityManager:
 
 ### Prompt Injection Patterns
 
-antaris-guard detects **40+ injection patterns** including:
+antaris-guard detects **45 injection patterns** including:
 
 | Category | Examples | Threat Level |
 |----------|----------|--------------|
@@ -273,12 +275,13 @@ filter.enable_detection('credit_card')
 
 ## Benchmarks
 
-**Performance on modern hardware (M1 MacBook Pro):**
+**Performance on Apple M4, Python 3.14:**
 
 | Operation | Rate | Notes |
 |-----------|------|-------|
-| Prompt analysis | ~50,000 texts/sec | Average 100 chars |
-| PII detection | ~30,000 texts/sec | Mixed content |
+| Prompt analysis (safe) | ~55,000 texts/sec | Average 100 chars |
+| Prompt analysis (malicious) | ~45,000 texts/sec | With pattern matches |
+| PII detection | ~150,000 texts/sec | Mixed content |
 | Content filtering | ~25,000 texts/sec | With redaction |
 | Rate limit check | ~100,000 ops/sec | In-memory buckets |
 
@@ -372,6 +375,8 @@ else:
 ❌ **Not performance-optimized for huge scale**: Suitable for most applications but not designed for millions of requests per second.
 
 ❌ **Not a complete security solution**: Should be part of defense-in-depth, not the only security measure.
+
+⚠️ **Score is unreliable for long text**: The threat `score` (0.0–1.0) inversely correlates with text length — padding an attack with benign text lowers the score. Always use `result.is_blocked` and `result.is_suspicious` booleans for filtering decisions, not raw score thresholds. Score is useful for logging and prioritization, not as a gate.
 
 ## Comparison
 

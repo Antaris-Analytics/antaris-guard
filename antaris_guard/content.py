@@ -39,7 +39,7 @@ class ContentFilter:
         """
         self.pattern_matcher = PatternMatcher()
         self.redaction_masks = self._default_masks()
-        self.enabled_detections: Set[str] = set(['email', 'phone', 'ssn', 'credit_card', 'api_key', 'credential'])
+        self.enabled_detections: Set[str] = set(['email', 'phone', 'ssn', 'credit_card', 'ip_address', 'api_key', 'credential'])
         self.custom_patterns: List[Tuple[str, str]] = []
         self.redaction_enabled = True
         
@@ -105,7 +105,9 @@ class ContentFilter:
             ]
         }
         
-        os.makedirs(os.path.dirname(config_path), exist_ok=True)
+        dir_path = os.path.dirname(config_path)
+        if dir_path:
+            os.makedirs(dir_path, exist_ok=True)
         with open(config_path, 'w') as f:
             json.dump(config, f, indent=2)
     

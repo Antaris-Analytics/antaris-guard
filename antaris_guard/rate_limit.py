@@ -118,12 +118,16 @@ class RateLimiter:
             
             # Write to temporary file first, then rename (atomic operation)
             temp_file = self.state_file + '.tmp'
-            os.makedirs(os.path.dirname(self.state_file), exist_ok=True)
+            dir_path = os.path.dirname(self.state_file)
+            if dir_path:
+                os.makedirs(dir_path, exist_ok=True)
             
             with open(temp_file, 'w') as f:
                 json.dump(data, f, indent=2)
+                f.flush()
+                os.fsync(f.fileno())
             
-            os.rename(temp_file, self.state_file)
+            os.replace(temp_file, self.state_file)
             
         except (OSError, IOError):
             # Fail silently if save fails

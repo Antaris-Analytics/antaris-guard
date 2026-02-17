@@ -140,6 +140,7 @@ class AuditLogger:
             with open(self.current_log_file, 'a', encoding='utf-8') as f:
                 json.dump(asdict(event), f)
                 f.write('\n')
+                f.flush()
         except (OSError, IOError):
             # Fail silently if logging fails
             pass
