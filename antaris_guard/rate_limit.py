@@ -40,7 +40,7 @@ class RateLimiter:
     - Per-source rate limits
     - Configurable burst allowance
     - File-based state persistence
-    - Thread-safe operations
+    - Single-process thread-safe operations (not multi-process safe)
     - Automatic cleanup of old buckets
     """
     

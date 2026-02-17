@@ -256,7 +256,13 @@ class ReputationTracker:
         return sorted(results, key=lambda p: p.trust_score)
     
     def reset_source(self, source_id: str) -> None:
-        """Reset a source's reputation to initial trust."""
+        """
+        Reset a source's reputation to initial trust.
+        
+        SECURITY-SENSITIVE: This clears escalation_count, which removes
+        the anti-gaming ratchet for this source. Only expose through
+        admin/privileged APIs — never allow untrusted callers to trigger.
+        """
         if source_id in self.profiles:
             profile = self.profiles[source_id]
             profile.trust_score = self.initial_trust
@@ -265,7 +271,13 @@ class ReputationTracker:
             self._save()
     
     def remove_source(self, source_id: str) -> bool:
-        """Remove a source's profile entirely."""
+        """
+        Remove a source's profile entirely.
+        
+        SECURITY-SENSITIVE: A removed source re-enters as a fresh profile
+        with initial trust and no escalation history, bypassing the
+        anti-gaming ratchet. Only expose through admin/privileged APIs.
+        """
         if source_id in self.profiles:
             del self.profiles[source_id]
             self._save()

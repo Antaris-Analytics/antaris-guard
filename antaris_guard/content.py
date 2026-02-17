@@ -2,11 +2,15 @@
 ContentFilter - Output filtering and PII detection/redaction.
 """
 import json
+import logging
 import os
 import re
 from typing import Dict, List, Optional, Set, Any, Tuple
 from dataclasses import dataclass
 from .patterns import PatternMatcher
+from .utils import atomic_write_json
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -86,9 +90,10 @@ class ContentFilter:
             # Redaction setting
             self.redaction_enabled = config.get('redaction_enabled', True)
                     
-        except (json.JSONDecodeError, FileNotFoundError, KeyError):
-            # Fail silently and use defaults
-            pass
+        except FileNotFoundError:
+            pass  # No config file = use defaults
+        except (json.JSONDecodeError, KeyError) as e:
+            logger.warning("Corrupt filter config at %s: %s — using defaults", config_path, e)
     
     def save_config(self, config_path: str) -> None:
         """Save current configuration to JSON file."""
@@ -104,12 +109,7 @@ class ContentFilter:
                 for pattern, pii_type in self.custom_patterns
             ]
         }
-        
-        dir_path = os.path.dirname(config_path)
-        if dir_path:
-            os.makedirs(dir_path, exist_ok=True)
-        with open(config_path, 'w') as f:
-            json.dump(config, f, indent=2)
+        atomic_write_json(config_path, config)
     
     def set_redaction_mask(self, pii_type: str, mask: str) -> None:
         """Set custom redaction mask for a PII type."""

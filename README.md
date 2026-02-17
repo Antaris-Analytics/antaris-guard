@@ -542,6 +542,16 @@ We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) f
 - Integration examples
 - Documentation improvements
 
+## Security Model & Scope
+
+antaris-guard operates at the **input analysis layer** — it examines individual requests and tracks per-source behavior over time. It is not a substitute for infrastructure-level security.
+
+**What's in scope:** Pattern detection, PII redaction, per-source reputation tracking, behavioral analysis (burst/escalation/probe detection), rate limiting.
+
+**What's out of scope:** Source-ID proliferation attacks. An adversary who can generate unlimited unique source identifiers (e.g., new accounts, rotating IPs) can bypass per-source reputation tracking by using each identity for only one malicious request. Mitigate this with upstream IP-level or session-level rate limiting, CAPTCHA, or identity verification — antaris-guard is designed to complement these controls, not replace them.
+
+**Admin-only operations:** `reset_source()` and `remove_source()` on `ReputationTracker` clear the anti-gaming ratchet. Never expose these to untrusted callers.
+
 ## License
 
 Apache 2.0 - See [LICENSE](LICENSE) file for details.

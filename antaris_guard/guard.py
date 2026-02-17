@@ -2,12 +2,16 @@
 PromptGuard - Main security class for analyzing input text and detecting injection attempts.
 """
 import json
+import logging
 import os
 import re
 from typing import Dict, List, Optional, Set, Any
 from dataclasses import dataclass
 from .patterns import PatternMatcher, ThreatLevel
 from .normalizer import normalize
+from .utils import atomic_write_json
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -78,9 +82,10 @@ class PromptGuard:
                     threat_level = ThreatLevel(threat_level_str)
                     self.custom_patterns.append((pattern, threat_level))
                     
-        except (json.JSONDecodeError, FileNotFoundError, KeyError) as e:
-            # Fail silently and use defaults
-            pass
+        except FileNotFoundError:
+            pass  # No config file = use defaults
+        except (json.JSONDecodeError, KeyError) as e:
+            logger.warning("Corrupt guard config at %s: %s — using defaults", config_path, e)
     
     def save_config(self, config_path: str) -> None:
         """Save current configuration to JSON file."""
@@ -96,12 +101,7 @@ class PromptGuard:
                 for pattern, threat_level in self.custom_patterns
             ]
         }
-        
-        dir_path = os.path.dirname(config_path)
-        if dir_path:
-            os.makedirs(dir_path, exist_ok=True)
-        with open(config_path, 'w') as f:
-            json.dump(config, f, indent=2)
+        atomic_write_json(config_path, config)
     
     def add_to_allowlist(self, text: str) -> None:
         """Add text to allowlist (will be considered safe)."""
