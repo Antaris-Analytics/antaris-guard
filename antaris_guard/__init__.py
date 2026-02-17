@@ -14,13 +14,17 @@ Usage:
         print(f"Blocked: {result.message}")
 """
 
-__version__ = "0.2.0"
+__version__ = "0.5.0"
 
 # Core
 from .guard import PromptGuard, GuardResult, SensitivityLevel
 from .content import ContentFilter, FilterResult
 from .audit import AuditLogger, AuditEvent
 from .rate_limit import RateLimiter, RateLimitResult, BucketState
+
+# Behavioral analysis
+from .reputation import ReputationTracker, ReputationProfile
+from .behavior import BehaviorAnalyzer, BehaviorAlert
 
 # Utilities
 from .patterns import ThreatLevel, PatternMatcher
@@ -36,6 +40,10 @@ __all__ = [
     "AuditEvent",
     "RateLimitResult",
     "BucketState",
+    "ReputationTracker",
+    "ReputationProfile",
+    "BehaviorAnalyzer",
+    "BehaviorAlert",
     "ThreatLevel",
     "SensitivityLevel",
     "PatternMatcher",

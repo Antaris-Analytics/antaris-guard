@@ -4,6 +4,23 @@ All notable changes to antaris-guard will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
+## [0.5.0] - 2026-02-16
+
+### Added (Behavioral Analysis)
+- **ReputationTracker**: Per-source trust profiles that evolve over time
+  - Trust increases with safe interactions, decreases with threats
+  - Inactivity decay (trust drifts back to baseline over time)
+  - Threshold adjustment — trusted sources get more lenient detection
+  - High-risk source identification
+  - File-based persistence with atomic writes
+- **BehaviorAnalyzer**: Cross-session pattern detection
+  - **Burst detection**: Rapid-fire suspicious/blocked requests in time window
+  - **Escalation detection**: Sources that start safe and gradually test boundaries
+  - **Probe sequence detection**: Systematic testing of different attack vectors
+  - Per-source interaction history with configurable window size
+  - File-based persistence with atomic writes
+- 18 new tests (10 reputation + 8 behavior), 71 total
+
 ## [0.2.0] - 2026-02-16
 
 ### Added

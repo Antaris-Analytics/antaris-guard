@@ -9,7 +9,8 @@ import time
 import unittest
 from antaris_guard import (
     PromptGuard, ContentFilter, AuditLogger, RateLimiter,
-    ThreatLevel, SensitivityLevel, GuardResult, FilterResult
+    ThreatLevel, SensitivityLevel, GuardResult, FilterResult,
+    ReputationTracker, BehaviorAnalyzer,
 )
 
 
@@ -850,3 +851,162 @@ class TestScoreIndependence(unittest.TestCase):
         long_result = self.guard.analyze(long)
         # Scores should be within 0.3 of each other (not 10x different)
         self.assertAlmostEqual(short_result.score, long_result.score, delta=0.3)
+
+
+class TestReputationTracker(unittest.TestCase):
+    """Test source reputation scoring."""
+
+    def setUp(self):
+        self.store_path = os.path.join(tempfile.mkdtemp(), "rep.json")
+        self.tracker = ReputationTracker(store_path=self.store_path)
+
+    def test_new_source_gets_initial_trust(self):
+        trust = self.tracker.get_trust("user_1")
+        self.assertEqual(trust, 0.5)
+
+    def test_safe_interactions_increase_trust(self):
+        for _ in range(10):
+            self.tracker.record_interaction("user_1", "safe")
+        trust = self.tracker.get_trust("user_1")
+        self.assertGreater(trust, 0.5)
+
+    def test_blocked_interactions_decrease_trust(self):
+        self.tracker.record_interaction("user_1", "blocked")
+        trust = self.tracker.get_trust("user_1")
+        self.assertLess(trust, 0.5)
+
+    def test_suspicious_interactions_decrease_trust(self):
+        self.tracker.record_interaction("user_1", "suspicious")
+        trust = self.tracker.get_trust("user_1")
+        self.assertLess(trust, 0.5)
+
+    def test_trust_bounded_0_to_1(self):
+        for _ in range(100):
+            self.tracker.record_interaction("user_1", "blocked")
+        trust = self.tracker.get_trust("user_1")
+        self.assertGreaterEqual(trust, 0.0)
+
+        for _ in range(200):
+            self.tracker.record_interaction("user_2", "safe")
+        trust = self.tracker.get_trust("user_2")
+        self.assertLessEqual(trust, 1.0)
+
+    def test_threshold_adjustment(self):
+        # Trusted source gets more lenient thresholds
+        for _ in range(20):
+            self.tracker.record_interaction("trusted", "safe")
+        s_thresh, b_thresh = self.tracker.adjust_thresholds("trusted", 0.4, 0.6)
+        self.assertGreater(s_thresh, 0.4)
+        self.assertGreater(b_thresh, 0.6)
+
+        # Untrusted source gets stricter thresholds
+        for _ in range(5):
+            self.tracker.record_interaction("untrusted", "blocked")
+        s_thresh, b_thresh = self.tracker.adjust_thresholds("untrusted", 0.4, 0.6)
+        self.assertLess(s_thresh, 0.4)
+        self.assertLess(b_thresh, 0.6)
+
+    def test_persistence(self):
+        self.tracker.record_interaction("user_1", "blocked")
+        trust_before = self.tracker.get_trust("user_1")
+
+        # Reload from disk
+        tracker2 = ReputationTracker(store_path=self.store_path)
+        trust_after = tracker2.get_trust("user_1")
+        self.assertAlmostEqual(trust_before, trust_after, places=2)
+
+    def test_high_risk_sources(self):
+        for _ in range(5):
+            self.tracker.record_interaction("bad_actor", "blocked")
+        high_risk = self.tracker.get_high_risk_sources(max_trust=0.3)
+        source_ids = [p.source_id for p in high_risk]
+        self.assertIn("bad_actor", source_ids)
+
+    def test_reset_source(self):
+        for _ in range(5):
+            self.tracker.record_interaction("user_1", "blocked")
+        self.tracker.reset_source("user_1")
+        trust = self.tracker.get_trust("user_1")
+        self.assertEqual(trust, 0.5)
+
+    def test_stats(self):
+        self.tracker.record_interaction("a", "safe")
+        self.tracker.record_interaction("b", "blocked")
+        stats = self.tracker.stats()
+        self.assertEqual(stats['total_sources'], 2)
+        self.assertEqual(stats['total_interactions'], 2)
+
+
+class TestBehaviorAnalyzer(unittest.TestCase):
+    """Test behavioral analysis."""
+
+    def setUp(self):
+        self.store_path = os.path.join(tempfile.mkdtemp(), "behavior.json")
+        self.analyzer = BehaviorAnalyzer(store_path=self.store_path)
+
+    def test_no_alerts_on_safe_behavior(self):
+        alerts = self.analyzer.record("user_1", "safe")
+        self.assertEqual(len(alerts), 0)
+
+    def test_burst_detection(self):
+        # Rapid-fire suspicious requests
+        alerts = []
+        for _ in range(6):
+            result = self.analyzer.record("user_1", "suspicious")
+            alerts.extend(result)
+        burst_alerts = [a for a in alerts if a.alert_type == 'burst']
+        self.assertGreater(len(burst_alerts), 0)
+
+    def test_escalation_detection(self):
+        # Start safe, then escalate
+        for _ in range(10):
+            self.analyzer.record("user_1", "safe")
+        alerts = []
+        for _ in range(10):
+            result = self.analyzer.record("user_1", "blocked")
+            alerts.extend(result)
+        escalation_alerts = [a for a in alerts if a.alert_type == 'escalation']
+        self.assertGreater(len(escalation_alerts), 0)
+
+    def test_probe_sequence_detection(self):
+        # Different attack types = probing
+        attack_types = [
+            ["system_override"], ["role_confusion"], ["jailbreak"],
+            ["code_injection"], ["sql_injection"], ["info_extraction"],
+        ]
+        alerts = []
+        for patterns in attack_types:
+            result = self.analyzer.record("user_1", "suspicious", matched_patterns=patterns)
+            alerts.extend(result)
+        probe_alerts = [a for a in alerts if a.alert_type == 'probe_sequence']
+        self.assertGreater(len(probe_alerts), 0)
+
+    def test_source_summary(self):
+        self.analyzer.record("user_1", "safe")
+        self.analyzer.record("user_1", "suspicious")
+        self.analyzer.record("user_1", "blocked")
+        summary = self.analyzer.get_source_summary("user_1")
+        self.assertEqual(summary['interactions'], 3)
+        self.assertEqual(summary['safe'], 1)
+        self.assertEqual(summary['suspicious'], 1)
+        self.assertEqual(summary['blocked'], 1)
+
+    def test_persistence(self):
+        self.analyzer.record("user_1", "suspicious")
+        # Reload from disk
+        analyzer2 = BehaviorAnalyzer(store_path=self.store_path)
+        summary = analyzer2.get_source_summary("user_1")
+        self.assertEqual(summary['interactions'], 1)
+
+    def test_clear_source(self):
+        self.analyzer.record("user_1", "suspicious")
+        self.analyzer.clear_source("user_1")
+        summary = self.analyzer.get_source_summary("user_1")
+        self.assertEqual(summary['interactions'], 0)
+
+    def test_stats(self):
+        self.analyzer.record("a", "safe")
+        self.analyzer.record("b", "suspicious")
+        stats = self.analyzer.stats()
+        self.assertEqual(stats['tracked_sources'], 2)
+        self.assertEqual(stats['total_interactions'], 2)
