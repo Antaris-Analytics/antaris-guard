@@ -2,11 +2,15 @@
 RateLimiter - Token bucket rate limiting with file-based persistence.
 """
 import json
+import logging
 import os
 import time
 import threading
 from typing import Dict, Optional, Any
 from dataclasses import dataclass
+from .utils import atomic_write_json
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -101,36 +105,23 @@ class RateLimiter:
     
     def _save_state(self) -> None:
         """Save current state to file."""
-        try:
-            # Prepare data for serialization
-            data = {
-                'source_configs': self.source_configs,
-                'buckets': {}
+        data = {
+            'source_configs': self.source_configs,
+            'buckets': {}
+        }
+        
+        for source_id, bucket in self.buckets.items():
+            data['buckets'][source_id] = {
+                'tokens': bucket.tokens,
+                'last_update': bucket.last_update,
+                'requests_made': bucket.requests_made,
+                'first_request': bucket.first_request
             }
-            
-            for source_id, bucket in self.buckets.items():
-                data['buckets'][source_id] = {
-                    'tokens': bucket.tokens,
-                    'last_update': bucket.last_update,
-                    'requests_made': bucket.requests_made,
-                    'first_request': bucket.first_request
-                }
-            
-            # Write to temporary file first, then rename (atomic operation)
-            temp_file = self.state_file + '.tmp'
-            dir_path = os.path.dirname(self.state_file)
-            if dir_path:
-                os.makedirs(dir_path, exist_ok=True)
-            
-            with open(temp_file, 'w') as f:
-                json.dump(data, f, indent=2)
-                f.flush()
-                os.fsync(f.fileno())
-            
-            os.replace(temp_file, self.state_file)
-            
-        except (OSError, IOError):
-            # Fail silently if save fails
+        
+        try:
+            atomic_write_json(self.state_file, data)
+        except OSError:
+            # atomic_write_json already logged the error
             pass
     
     def set_source_config(self, source_id: str, requests_per_second: float, 

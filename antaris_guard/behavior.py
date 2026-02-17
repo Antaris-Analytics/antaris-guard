@@ -8,11 +8,14 @@ All deterministic, zero dependencies, file-based persistence.
 """
 
 import json
+import logging
 import os
 import time
 from typing import Dict, List, Optional, Any
-from collections import deque
 from dataclasses import dataclass, asdict
+from .utils import atomic_write_json
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -56,6 +59,9 @@ class BehaviorAnalyzer:
     PROBE_UNIQUE_THRESHOLD = 5   # Different attack types in window = probing
     PROBE_WINDOW = 50            # Interactions to check for probing
     
+    # Alert deduplication
+    ALERT_COOLDOWN_SECONDS = 300  # Suppress duplicate alerts within 5 minutes
+    
     def __init__(self, store_path: str = "./behavior_store.json"):
         """
         Initialize BehaviorAnalyzer.
@@ -66,6 +72,8 @@ class BehaviorAnalyzer:
         self.store_path = store_path
         # source_id → list of interaction records
         self.interactions: Dict[str, list] = {}
+        # (source_id, alert_type) → last alert timestamp (in-memory only)
+        self._last_alerts: Dict[tuple, float] = {}
         self._load()
     
     def _load(self) -> None:
@@ -85,17 +93,10 @@ class BehaviorAnalyzer:
             'interactions': self.interactions,
             'saved_at': time.time(),
         }
-        temp_path = self.store_path + '.tmp'
-        dir_path = os.path.dirname(self.store_path)
-        if dir_path:
-            os.makedirs(dir_path, exist_ok=True)
         try:
-            with open(temp_path, 'w') as f:
-                json.dump(data, f)
-                f.flush()
-                os.fsync(f.fileno())
-            os.replace(temp_path, self.store_path)
-        except (OSError, IOError):
+            atomic_write_json(self.store_path, data, indent=None)
+        except OSError:
+            # atomic_write_json already logged the error
             pass
     
     def record(self, source_id: str, threat_level: str,
@@ -133,23 +134,32 @@ class BehaviorAnalyzer:
             self.interactions[source_id] = history[-self.INTERACTION_WINDOW:]
             history = self.interactions[source_id]
         
-        # Run behavioral checks
+        # Run behavioral checks (with deduplication)
         alerts = []
         
         burst = self._check_burst(source_id, history, now)
-        if burst:
+        if burst and self._should_alert(source_id, burst.alert_type, now):
             alerts.append(burst)
         
         escalation = self._check_escalation(source_id, history)
-        if escalation:
+        if escalation and self._should_alert(source_id, escalation.alert_type, now):
             alerts.append(escalation)
         
         probe = self._check_probe_sequence(source_id, history)
-        if probe:
+        if probe and self._should_alert(source_id, probe.alert_type, now):
             alerts.append(probe)
         
         self._save()
         return alerts
+    
+    def _should_alert(self, source_id: str, alert_type: str, now: float) -> bool:
+        """Check if alert should fire (cooldown deduplication)."""
+        key = (source_id, alert_type)
+        last = self._last_alerts.get(key, 0.0)
+        if now - last < self.ALERT_COOLDOWN_SECONDS:
+            return False
+        self._last_alerts[key] = now
+        return True
     
     def _check_burst(self, source_id: str, history: list,
                      now: float) -> Optional[BehaviorAlert]:

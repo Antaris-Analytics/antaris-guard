@@ -29,6 +29,7 @@ from .behavior import BehaviorAnalyzer, BehaviorAlert
 # Utilities
 from .patterns import ThreatLevel, PatternMatcher
 from .normalizer import normalize, normalize_light
+from .utils import atomic_write_json
 
 __all__ = [
     "PromptGuard",

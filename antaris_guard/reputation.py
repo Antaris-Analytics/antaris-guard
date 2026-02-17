@@ -9,10 +9,14 @@ All deterministic, zero dependencies, file-based persistence.
 """
 
 import json
+import logging
 import os
 import time
 from typing import Dict, Optional, Any, List
 from dataclasses import dataclass, asdict
+from .utils import atomic_write_json
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -91,17 +95,10 @@ class ReputationTracker:
             'profiles': {sid: asdict(p) for sid, p in self.profiles.items()},
             'saved_at': time.time(),
         }
-        temp_path = self.store_path + '.tmp'
-        dir_path = os.path.dirname(self.store_path)
-        if dir_path:
-            os.makedirs(dir_path, exist_ok=True)
         try:
-            with open(temp_path, 'w') as f:
-                json.dump(data, f, indent=2)
-                f.flush()
-                os.fsync(f.fileno())
-            os.replace(temp_path, self.store_path)
-        except (OSError, IOError):
+            atomic_write_json(self.store_path, data)
+        except OSError:
+            # atomic_write_json already logged the error
             pass
     
     def _get_or_create(self, source_id: str) -> ReputationProfile:
@@ -123,7 +120,14 @@ class ReputationTracker:
         return self.profiles[source_id]
     
     def _apply_decay(self, profile: ReputationProfile) -> None:
-        """Apply inactivity decay — trust drifts toward initial over time."""
+        """
+        Apply inactivity decay — trust drifts toward initial over time.
+        
+        NOTE: This mutates the profile in-memory but does NOT call _save().
+        This is intentional — decay is idempotent and recalculated from
+        last_seen on every call, so restarting the process and recalculating
+        gives the same result. Only record_interaction() persists changes.
+        """
         now = time.time()
         hours_inactive = (now - profile.last_seen) / 3600
         
@@ -210,6 +214,11 @@ class ReputationTracker:
         Trusted sources get higher thresholds (more lenient).
         Untrusted sources get lower thresholds (more strict).
         
+        Anti-gaming ratchet: sources that have EVER been blocked cannot
+        receive above-baseline leniency, regardless of current trust.
+        This prevents the attack where an adversary builds trust with
+        safe requests then exploits the higher thresholds.
+        
         Args:
             source_id: Source identifier
             suspicious_threshold: Base suspicious threshold
@@ -219,12 +228,21 @@ class ReputationTracker:
             Tuple of (adjusted_suspicious, adjusted_blocked)
         """
         trust = self.get_trust(source_id)
+        profile = self.profiles.get(source_id)
         
         # Trust adjustment: ±20% of threshold based on trust deviation from 0.5
         trust_offset = (trust - 0.5) * 0.4  # -0.2 to +0.2
         
+        # Anti-gaming ratchet: sources with any escalation history
+        # cannot get above-baseline leniency (positive offset capped at 0)
+        if profile and profile.escalation_count > 0:
+            trust_offset = min(0.0, trust_offset)
+        
         adjusted_suspicious = max(0.05, min(0.95, suspicious_threshold + trust_offset))
         adjusted_blocked = max(0.1, min(1.0, blocked_threshold + trust_offset))
+        
+        # Ensure blocked threshold stays above suspicious threshold
+        adjusted_blocked = max(adjusted_blocked, adjusted_suspicious + 0.05)
         
         return adjusted_suspicious, adjusted_blocked
     
@@ -255,7 +273,7 @@ class ReputationTracker:
         return False
     
     def stats(self) -> Dict[str, Any]:
-        """Get tracker statistics."""
+        """Get tracker statistics (applies decay for current values)."""
         if not self.profiles:
             return {
                 'total_sources': 0,
@@ -263,6 +281,9 @@ class ReputationTracker:
                 'high_risk_count': 0,
             }
         
+        # Apply decay to get current trust values
+        for profile in self.profiles.values():
+            self._apply_decay(profile)
         trusts = [p.trust_score for p in self.profiles.values()]
         return {
             'total_sources': len(self.profiles),

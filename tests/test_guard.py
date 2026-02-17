@@ -1010,3 +1010,69 @@ class TestBehaviorAnalyzer(unittest.TestCase):
         stats = self.analyzer.stats()
         self.assertEqual(stats['tracked_sources'], 2)
         self.assertEqual(stats['total_interactions'], 2)
+
+    def test_burst_alert_deduplication(self):
+        """Burst alerts should be suppressed within cooldown window."""
+        # Trigger burst: 6 suspicious requests in rapid succession
+        alerts_collected = []
+        for i in range(8):
+            alerts = self.analyzer.record("user_burst", "suspicious",
+                                          matched_patterns=["test"])
+            alerts_collected.extend(alerts)
+        # Should get exactly ONE burst alert, not 4
+        burst_alerts = [a for a in alerts_collected if a.alert_type == 'burst']
+        self.assertEqual(len(burst_alerts), 1,
+                         f"Expected 1 burst alert, got {len(burst_alerts)}")
+
+
+class TestTrustGaming(unittest.TestCase):
+    """Test that the anti-gaming ratchet prevents trust exploitation."""
+
+    def setUp(self):
+        self.store_path = f"/tmp/test_gaming_{os.getpid()}.json"
+        self.tracker = ReputationTracker(store_path=self.store_path)
+
+    def tearDown(self):
+        if os.path.exists(self.store_path):
+            os.remove(self.store_path)
+
+    def test_blocked_source_cannot_get_leniency(self):
+        """A source that was ever blocked should never get above-baseline thresholds."""
+        # Build trust with safe requests
+        for _ in range(30):
+            self.tracker.record_interaction("attacker", "safe")
+
+        trust = self.tracker.get_trust("attacker")
+        self.assertGreater(trust, 0.8, "Should have high trust after safe requests")
+
+        # Get blocked once
+        self.tracker.record_interaction("attacker", "blocked", was_blocked=True)
+
+        # Even after recovering trust with more safe requests
+        for _ in range(30):
+            self.tracker.record_interaction("attacker", "safe")
+
+        # Thresholds should NOT be more lenient than baseline
+        adj_sus, adj_blk = self.tracker.adjust_thresholds("attacker", 0.4, 0.6)
+        self.assertLessEqual(adj_sus, 0.4, "Suspicious threshold must not exceed baseline")
+        self.assertLessEqual(adj_blk, max(0.6, adj_sus + 0.05),
+                             "Blocked threshold must not exceed baseline (plus gap)")
+
+    def test_clean_source_gets_leniency(self):
+        """A source with NO escalation history can earn leniency."""
+        for _ in range(25):
+            self.tracker.record_interaction("clean_user", "safe")
+
+        adj_sus, adj_blk = self.tracker.adjust_thresholds("clean_user", 0.4, 0.6)
+        self.assertGreater(adj_sus, 0.4, "Clean source should get lenient suspicious threshold")
+        self.assertGreater(adj_blk, 0.6, "Clean source should get lenient blocked threshold")
+
+    def test_threshold_gap_maintained(self):
+        """Blocked threshold must always be above suspicious threshold."""
+        # Untrusted source (low trust = negative offset on both)
+        for _ in range(5):
+            self.tracker.record_interaction("bad_actor", "blocked", was_blocked=True)
+
+        adj_sus, adj_blk = self.tracker.adjust_thresholds("bad_actor", 0.4, 0.6)
+        self.assertGreaterEqual(adj_blk, adj_sus + 0.05,
+                                "Blocked threshold must be at least 0.05 above suspicious")
