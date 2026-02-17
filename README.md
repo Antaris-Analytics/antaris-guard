@@ -552,6 +552,10 @@ antaris-guard operates at the **input analysis layer** — it examines individua
 
 **Admin-only operations:** `reset_source()` and `remove_source()` on `ReputationTracker` clear the anti-gaming ratchet. Never expose these to untrusted callers.
 
+**Allowlist is substring-based by default.** Allowlisting a short string like `"ignore"` will bypass detection for ANY input containing that word. Use `guard.allowlist_exact = True` for whole-string matching, or only allowlist complete phrases. This is a deliberate sharp tool — use carefully.
+
+**Detection is lexical, not semantic.** antaris-guard catches known injection patterns, encoding tricks, and behavioral signals. It will not catch semantically rephrased instructions like "behave differently from earlier constraints." For semantic-level detection, pair with an LLM-based classifier.
+
 ## License
 
 Apache 2.0 - See [LICENSE](LICENSE) file for details.
