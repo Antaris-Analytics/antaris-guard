@@ -7,11 +7,15 @@ import os
 import re
 from typing import Dict, List, Optional, Set, Any
 from dataclasses import dataclass
-from .patterns import PatternMatcher, ThreatLevel
+from .patterns import PatternMatcher, ThreatLevel, PATTERN_VERSION
 from .normalizer import normalize
 from .utils import atomic_write_json
 
 logger = logging.getLogger(__name__)
+
+
+# Type alias for hook callbacks
+HookCallback = None  # defined below after imports
 
 
 @dataclass
@@ -24,6 +28,7 @@ class GuardResult:
     matches: List[Dict[str, Any]]
     score: float  # 0.0 (safe) to 1.0 (definitely malicious)
     message: str
+    pattern_version: str = PATTERN_VERSION
 
 
 class SensitivityLevel:
@@ -45,19 +50,32 @@ class PromptGuard:
     """
     
     def __init__(self, config_path: Optional[str] = None, 
-                 sensitivity: str = SensitivityLevel.BALANCED):
+                 sensitivity: str = SensitivityLevel.BALANCED,
+                 pattern_matcher: Optional[PatternMatcher] = None):
         """
         Initialize PromptGuard.
         
         Args:
             config_path: Path to JSON configuration file
             sensitivity: Sensitivity level (strict/balanced/permissive)
+            pattern_matcher: Custom PatternMatcher instance. Use this to
+                             supply your own pattern sets and version.
+                             Defaults to built-in patterns.
         """
         self.sensitivity = sensitivity
-        self.pattern_matcher = PatternMatcher()
+        self.pattern_matcher = pattern_matcher or PatternMatcher()
         self.allowlist: Set[str] = set()
         self.blocklist: Set[str] = set()
         self.custom_patterns: List[tuple] = []
+        
+        # Integration hooks — callables invoked on specific events
+        # Signature: callback(result: GuardResult, text: str) -> None
+        self._hooks: Dict[str, List] = {
+            'on_blocked': [],
+            'on_suspicious': [],
+            'on_safe': [],
+            'on_any': [],
+        }
         
         # Load configuration if provided
         if config_path and os.path.exists(config_path):
@@ -123,6 +141,55 @@ class PromptGuard:
         """Add a custom detection pattern."""
         self.custom_patterns.append((pattern, threat_level))
     
+    def add_hook(self, event: str, callback) -> None:
+        """
+        Register an integration hook.
+        
+        Args:
+            event: Event type — 'on_blocked', 'on_suspicious', 'on_safe', or 'on_any'
+            callback: Callable with signature (result: GuardResult, text: str) -> None.
+                      Exceptions in callbacks are caught and logged, never propagated.
+        
+        Raises:
+            ValueError: If event type is not recognized
+        """
+        if event not in self._hooks:
+            raise ValueError(f"Unknown hook event '{event}'. Valid: {list(self._hooks.keys())}")
+        self._hooks[event].append(callback)
+    
+    def remove_hook(self, event: str, callback) -> bool:
+        """Remove a previously registered hook. Returns True if found."""
+        if event in self._hooks:
+            try:
+                self._hooks[event].remove(callback)
+                return True
+            except ValueError:
+                return False
+        return False
+    
+    def _dispatch_hooks(self, result: 'GuardResult', text: str) -> None:
+        """Fire registered hooks for the given result."""
+        # Always-fire hooks
+        for cb in self._hooks['on_any']:
+            try:
+                cb(result, text)
+            except Exception as e:
+                logger.warning("Hook on_any raised: %s", e)
+        
+        # Event-specific hooks
+        if result.is_blocked:
+            event_key = 'on_blocked'
+        elif result.is_suspicious:
+            event_key = 'on_suspicious'
+        else:
+            event_key = 'on_safe'
+        
+        for cb in self._hooks[event_key]:
+            try:
+                cb(result, text)
+            except Exception as e:
+                logger.warning("Hook %s raised: %s", event_key, e)
+    
     def _check_allowlist(self, text: str) -> bool:
         """Check if text is in allowlist."""
         text_lower = text.lower().strip()
@@ -179,6 +246,8 @@ class PromptGuard:
         Returns:
             GuardResult with threat assessment
         """
+        pv = self.pattern_matcher.pattern_version
+        
         if not text or not text.strip():
             return GuardResult(
                 threat_level=ThreatLevel.SAFE,
@@ -187,7 +256,8 @@ class PromptGuard:
                 is_blocked=False,
                 matches=[],
                 score=0.0,
-                message="Empty input"
+                message="Empty input",
+                pattern_version=pv,
             )
         
         text = text.strip()
@@ -197,19 +267,22 @@ class PromptGuard:
         
         # Check allowlist first
         if self._check_allowlist(text):
-            return GuardResult(
+            result = GuardResult(
                 threat_level=ThreatLevel.SAFE,
                 is_safe=True,
                 is_suspicious=False,
                 is_blocked=False,
                 matches=[],
                 score=0.0,
-                message="Allowlisted content"
+                message="Allowlisted content",
+                pattern_version=pv,
             )
+            self._dispatch_hooks(result, text)
+            return result
         
         # Check blocklist
         if self._check_blocklist(text):
-            return GuardResult(
+            result = GuardResult(
                 threat_level=ThreatLevel.BLOCKED,
                 is_safe=False,
                 is_suspicious=False,
@@ -221,8 +294,11 @@ class PromptGuard:
                     'threat_level': ThreatLevel.BLOCKED.value
                 }],
                 score=1.0,
-                message="Content is blocklisted"
+                message="Content is blocklisted",
+                pattern_version=pv,
             )
+            self._dispatch_hooks(result, text)
+            return result
         
         # Check against patterns (both original and normalized text)
         matches = self.pattern_matcher.check_injection_patterns(text)
@@ -275,15 +351,18 @@ class PromptGuard:
         else:
             message = "Input appears safe"
         
-        return GuardResult(
+        result = GuardResult(
             threat_level=threat_level,
             is_safe=threat_level == ThreatLevel.SAFE,
             is_suspicious=threat_level == ThreatLevel.SUSPICIOUS,
             is_blocked=threat_level == ThreatLevel.BLOCKED,
             matches=formatted_matches,
             score=score,
-            message=message
+            message=message,
+            pattern_version=pv,
         )
+        self._dispatch_hooks(result, text)
+        return result
     
     def is_safe(self, text: str) -> bool:
         """Quick check if text is safe to process."""
@@ -295,7 +374,9 @@ class PromptGuard:
         return {
             'sensitivity': self.sensitivity,
             'pattern_count': len(self.pattern_matcher.injection_patterns),
+            'pattern_version': self.pattern_matcher.pattern_version,
             'allowlist_size': len(self.allowlist),
             'blocklist_size': len(self.blocklist),
-            'custom_patterns': len(self.custom_patterns)
+            'custom_patterns': len(self.custom_patterns),
+            'hooks': {k: len(v) for k, v in self._hooks.items()},
         }

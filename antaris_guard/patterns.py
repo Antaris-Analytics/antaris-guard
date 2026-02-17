@@ -1,9 +1,17 @@
 """
 Detection patterns for prompt injection and PII identification.
+
+Pattern versioning: Every pattern set has a version string (PATTERN_VERSION).
+This version is included in GuardResult and audit events so you can trace
+which ruleset flagged a given input, even after pattern updates.
 """
 import re
-from typing import Dict, List, Pattern, Tuple
+from typing import Dict, List, Optional, Pattern, Tuple
 from enum import Enum
+
+
+# Bump this when patterns change — included in all match results
+PATTERN_VERSION = "1.0.0"
 
 
 class ThreatLevel(Enum):
@@ -87,6 +95,22 @@ PROMPT_INJECTION_PATTERNS = [
     (r"\\u[0-9a-fA-F]{4}", ThreatLevel.SUSPICIOUS),  # Unicode escapes
     (r"\\x[0-9a-fA-F]{2}", ThreatLevel.SUSPICIOUS),  # Hex escapes
     (r"%[0-9a-fA-F]{2}", ThreatLevel.SUSPICIOUS),    # URL encoding
+    
+    # Concatenated forms (catch normalizer output where spaces are removed)
+    # These fire on the normalized text when spacing/filler evasion collapses words
+    (r"(?i)ignoreallinstructions", ThreatLevel.BLOCKED),
+    (r"(?i)ignoreall(?:previous)?instructions", ThreatLevel.BLOCKED),
+    (r"(?i)enabledevelopermode", ThreatLevel.BLOCKED),
+    (r"(?i)enablegodmode", ThreatLevel.BLOCKED),
+    (r"(?i)enableadminmode", ThreatLevel.BLOCKED),
+    (r"(?i)enabledebugmode", ThreatLevel.SUSPICIOUS),
+    (r"(?i)showyoursystemprompt", ThreatLevel.BLOCKED),
+    (r"(?i)showmeyoursystemprompt", ThreatLevel.BLOCKED),
+    (r"(?i)revealyourinstructions", ThreatLevel.BLOCKED),
+    (r"(?i)forgeteverything", ThreatLevel.BLOCKED),
+    (r"(?i)escapeyourprogramming", ThreatLevel.BLOCKED),
+    (r"(?i)bypassyoursafety", ThreatLevel.BLOCKED),
+    (r"(?i)overrideyourrestrictions", ThreatLevel.BLOCKED),
 ]
 
 
@@ -118,31 +142,50 @@ PII_PATTERNS = [
 
 
 class PatternMatcher:
-    """Compiled pattern matcher for efficient regex operations."""
+    """
+    Compiled pattern matcher for efficient regex operations.
     
-    def __init__(self):
+    Supports configurable pattern sets: pass custom injection_patterns
+    and/or pii_patterns to override the built-in defaults. Each matcher
+    tracks its pattern_version for audit trail.
+    """
+    
+    def __init__(self, injection_patterns: Optional[List[Tuple[str, ThreatLevel]]] = None,
+                 pii_patterns: Optional[List[Tuple[str, str]]] = None,
+                 version: Optional[str] = None):
+        """
+        Initialize PatternMatcher.
+        
+        Args:
+            injection_patterns: Custom injection patterns as (regex_str, ThreatLevel) tuples.
+                                Defaults to PROMPT_INJECTION_PATTERNS.
+            pii_patterns: Custom PII patterns as (regex_str, pii_type) tuples.
+                          Defaults to PII_PATTERNS.
+            version: Pattern set version string. Defaults to PATTERN_VERSION.
+        """
+        self.pattern_version = version or PATTERN_VERSION
+        self._raw_injection = injection_patterns if injection_patterns is not None else PROMPT_INJECTION_PATTERNS
+        self._raw_pii = pii_patterns if pii_patterns is not None else PII_PATTERNS
         self.injection_patterns: List[Tuple[Pattern[str], ThreatLevel]] = []
         self.pii_patterns: List[Tuple[Pattern[str], str]] = []
         self._compile_patterns()
     
     def _compile_patterns(self) -> None:
         """Compile all regex patterns for performance."""
-        # Compile injection patterns
-        for pattern, threat_level in PROMPT_INJECTION_PATTERNS:
+        self.injection_patterns = []
+        for pattern, threat_level in self._raw_injection:
             try:
                 compiled = re.compile(pattern)
                 self.injection_patterns.append((compiled, threat_level))
             except re.error:
-                # Skip invalid patterns
                 continue
                 
-        # Compile PII patterns
-        for pattern, pii_type in PII_PATTERNS:
+        self.pii_patterns = []
+        for pattern, pii_type in self._raw_pii:
             try:
                 compiled = re.compile(pattern)
                 self.pii_patterns.append((compiled, pii_type))
             except re.error:
-                # Skip invalid patterns
                 continue
     
     def check_injection_patterns(self, text: str) -> List[Tuple[str, ThreatLevel, int]]:

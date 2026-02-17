@@ -25,6 +25,9 @@ LEET_MAP = {
 # Characters commonly inserted between letters to evade detection
 FILLER_CHARS = frozenset('.-_*~`•·…→←↑↓')
 
+# Soft hyphen and other invisible separators not in the zero-width range
+INVISIBLE_SEPARATORS = re.compile(r'[\u00ad\u034f\u2060\ufeff]')
+
 
 def normalize(text: str) -> Tuple[str, str]:
     """
@@ -41,8 +44,12 @@ def normalize(text: str) -> Tuple[str, str]:
     # Converts fullwidth chars, compatibility chars, homoglyphs
     text = unicodedata.normalize('NFKC', text)
     
-    # Step 2: Strip zero-width characters and control chars
-    text = re.sub(r'[\u200b-\u200f\u2028-\u202f\ufeff\u00ad]', '', text)
+    # Step 2: Strip zero-width characters, control chars, and invisible separators
+    text = re.sub(r'[\u200b-\u200f\u2028-\u202f\ufeff\u00ad\u034f\u2060]', '', text)
+    
+    # Re-insert spaces where zero-width removal concatenated words
+    # "ignore\u200ball" → "ignoreall" → need to match "ignoreall" too
+    # This is handled by patterns matching with optional \s*
     
     # Step 3: Collapse repeated whitespace/punctuation between word chars
     # Catches "i g n o r e" and "i.g.n.o.r.e" and "i-g-n-o-r-e"
@@ -61,21 +68,27 @@ def _collapse_spaced_words(text: str) -> str:
     
     "i g n o r e  a l l  i n s t r u c t i o n s" → "ignore all instructions"
     "i.g.n.o.r.e" → "ignore"
+    "e_n_a_b_l_e" → "enable"
+    "e*n*a*b*l*e" → "enable"
     """
     def collapse_match(m):
-        chars = re.findall(r'\w', m.group(0))
+        chars = re.findall(r'[a-zA-Z0-9]', m.group(0))
         return ''.join(chars)
     
-    # Match 3+ single chars separated by consistent fillers
+    # Filler pattern: spaces, dots, dashes, underscores, asterisks, etc.
+    # Using [a-zA-Z0-9] instead of \w because \w includes _ which we
+    # want to treat as a filler, not a word character.
+    filler = r'[\s.\-_*~`•·…]+'
+    alnum = r'[a-zA-Z0-9]'
+    
+    # Match 3+ single alnum chars separated by fillers
+    spaced_pattern = re.compile(alnum + r'(?:' + filler + alnum + r'){2,}')
+    
     # Split on double-space or more to detect word boundaries in spaced text
     parts = re.split(r'  +', text)
     collapsed_parts = []
     for part in parts:
-        collapsed = re.sub(
-            r'\b\w(?:[\s.\-_*~`•·…]+\w){2,}\b',
-            collapse_match,
-            part
-        )
+        collapsed = spaced_pattern.sub(collapse_match, part)
         collapsed_parts.append(collapsed)
     
     return ' '.join(collapsed_parts)
