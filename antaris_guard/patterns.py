@@ -27,11 +27,13 @@ PROMPT_INJECTION_PATTERNS = [
     (r"(?i)roleplay\s+(?:as|that)\s+(?:you\s+)?(?:a|an)?\s*(?:malicious|evil|hacker)", ThreatLevel.SUSPICIOUS),
     (r"(?i)imagine\s+(?:that\s+)?you\s+(?:are|were)", ThreatLevel.SUSPICIOUS),
     
-    # Developer mode attempts  
-    (r"(?i)developer\s+mode", ThreatLevel.BLOCKED),
-    (r"(?i)debug\s+mode", ThreatLevel.SUSPICIOUS),
-    (r"(?i)god\s+mode", ThreatLevel.BLOCKED),
-    (r"(?i)admin\s+mode", ThreatLevel.BLOCKED),
+    # Developer mode attempts (catch activations, not mentions in context)
+    (r"(?i)(?:enable|activate|enter|switch\s+to|turn\s+on)\s+developer\s+mode", ThreatLevel.BLOCKED),
+    (r"(?i)developer\s+mode\s+(?:activated|enabled|on)", ThreatLevel.BLOCKED),
+    (r"(?i)(?:enable|activate|enter|switch\s+to|turn\s+on)\s+debug\s+mode", ThreatLevel.SUSPICIOUS),
+    (r"(?i)(?:enable|activate|enter|switch\s+to|turn\s+on)\s+god\s+mode", ThreatLevel.BLOCKED),
+    (r"(?i)god\s+mode\s+(?:activated|enabled|on)", ThreatLevel.BLOCKED),
+    (r"(?i)(?:enable|activate|enter|switch\s+to|turn\s+on)\s+admin\s+mode", ThreatLevel.BLOCKED),
     
     # Jailbreak attempts
     (r"(?i)dan\s+mode", ThreatLevel.BLOCKED),  # "Do Anything Now"
@@ -39,11 +41,11 @@ PROMPT_INJECTION_PATTERNS = [
     (r"(?i)break\s+(?:out\s+of|free\s+from|your)", ThreatLevel.BLOCKED),
     (r"(?i)escape\s+your\s+(?:programming|constraints)", ThreatLevel.BLOCKED),
     
-    # Direct command attempts
+    # Direct command attempts (imperative form — "execute this command", not "my code uses exec")
     (r"(?i)execute\s+(?:this\s+)?(?:command|code|script)", ThreatLevel.BLOCKED),
-    (r"(?i)run\s+(?:this\s+)?(?:command|code|script)", ThreatLevel.BLOCKED),
-    (r"(?i)eval\s*\(", ThreatLevel.BLOCKED),
-    (r"(?i)exec\s*\(", ThreatLevel.BLOCKED),
+    (r"(?i)run\s+(?:this\s+)?(?:command|code|script)\b", ThreatLevel.SUSPICIOUS),
+    (r"(?i)(?:please\s+)?eval\s*\([^)]*\)", ThreatLevel.BLOCKED),
+    (r"(?i)(?:please\s+)?exec\s*\([^)]*\)", ThreatLevel.BLOCKED),
     
     # Information extraction attempts
     (r"(?i)(?:show|reveal)\s+(?:me\s+)?(?:your\s+)?(?:system\s+)?(?:prompt|instructions)", ThreatLevel.BLOCKED),
@@ -53,7 +55,7 @@ PROMPT_INJECTION_PATTERNS = [
     
     # Boundary testing
     (r"(?i)test\s+your\s+(?:limits|boundaries|restrictions)", ThreatLevel.SUSPICIOUS),
-    (r"(?i)what\s+(?:can't|cannot)\s+you\s+do", ThreatLevel.SUSPICIOUS),
+    (r"(?i)what\s+(?:can't|cannot)\s+you\s+do\b(?!\s+(?:with|in|about|for|using|to)\b)", ThreatLevel.SUSPICIOUS),
     (r"(?i)(?:bypass|circumvent|override)\s+(?:your\s+)?(?:safety|security|filters|restrictions)", ThreatLevel.BLOCKED),
     
     # Social engineering patterns

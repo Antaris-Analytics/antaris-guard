@@ -197,7 +197,7 @@ class TenantSecurityManager:
 
 ### Prompt Injection Patterns
 
-antaris-guard detects **45 injection patterns** including:
+antaris-guard detects **47 injection patterns** including:
 
 | Category | Examples | Threat Level |
 |----------|----------|--------------|

@@ -3,6 +3,28 @@
 All notable changes to antaris-guard will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+
+## [0.2.0] - 2026-02-16
+
+### Added
+- **Input normalization** — Unicode NFKC, zero-width char removal, spaced-character collapsing, leetspeak decoding
+- **Evasion resistance** — patterns run against both original and normalized text
+- `normalize()` and `normalize_light()` exported for standalone use
+- 10 new tests (normalization, false positive reduction, score independence), 53 total
+
+### Changed
+- **Score decoupled from text length** — threat score now based on match count and severity, not inversely proportional to input length. Padding attacks no longer reduce scores.
+- **Reduced false positives** on developer queries — "debug mode" / "admin mode" / "run this code" / "eval()" patterns now require imperative context instead of matching mentions in conversation
+- **"what can't you do"** pattern uses negative lookahead to avoid triggering on "what can't you do with Python?"
+- Command execution patterns: "run this code/script" downgraded from BLOCKED to SUSPICIOUS (reduces false positives while still flagging)
+- 47 injection patterns (up from 45)
+
+### Fixed
+- `save_config()` crash on plain filenames in PromptGuard and ContentFilter
+- RateLimiter silent persistence failure on plain filenames
+- `ip_address` detection now enabled by default (was documented but disabled)
+- RateLimiter: `os.rename` → `os.replace` (cross-platform atomic) + fsync before rename
+- AuditLogger: flush after each JSONL write
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]

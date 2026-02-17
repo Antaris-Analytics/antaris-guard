@@ -14,7 +14,7 @@ Usage:
         print(f"Blocked: {result.message}")
 """
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 # Core
 from .guard import PromptGuard, GuardResult, SensitivityLevel
@@ -24,6 +24,7 @@ from .rate_limit import RateLimiter, RateLimitResult, BucketState
 
 # Utilities
 from .patterns import ThreatLevel, PatternMatcher
+from .normalizer import normalize, normalize_light
 
 __all__ = [
     "PromptGuard",
@@ -38,4 +39,6 @@ __all__ = [
     "ThreatLevel",
     "SensitivityLevel",
     "PatternMatcher",
+    "normalize",
+    "normalize_light",
 ]

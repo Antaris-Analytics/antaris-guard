@@ -7,6 +7,7 @@ import re
 from typing import Dict, List, Optional, Set, Any
 from dataclasses import dataclass
 from .patterns import PatternMatcher, ThreatLevel
+from .normalizer import normalize
 
 
 @dataclass
@@ -136,20 +137,18 @@ class PromptGuard:
         """
         Calculate threat score based on matches and sensitivity.
         
-        Returns score from 0.0 (safe) to 1.0 (definitely malicious)
+        Returns score from 0.0 (safe) to 1.0 (definitely malicious).
+        Score is based on match severity, not text length.
         """
         if not matches:
             return 0.0
         
-        # Base scoring
+        # Score by severity — each match contributes independently
         blocked_count = sum(1 for _, threat_level, _ in matches if threat_level == ThreatLevel.BLOCKED)
         suspicious_count = sum(1 for _, threat_level, _ in matches if threat_level == ThreatLevel.SUSPICIOUS)
         
-        # Weight scores by severity
-        base_score = (blocked_count * 0.8 + suspicious_count * 0.4) / max(1, len(matches))
-        
-        # Adjust for text length (more matches in short text = higher score)
-        length_factor = min(1.0, 100.0 / max(1, text_length))
+        # Blocked matches contribute 0.4 each (capped), suspicious 0.15 each
+        base_score = min(1.0, blocked_count * 0.4 + suspicious_count * 0.15)
         
         # Apply sensitivity multiplier
         sensitivity_multiplier = {
@@ -158,7 +157,7 @@ class PromptGuard:
             SensitivityLevel.PERMISSIVE: 0.7
         }.get(self.sensitivity, 1.0)
         
-        score = base_score * length_factor * sensitivity_multiplier
+        score = base_score * sensitivity_multiplier
         return min(1.0, score)
     
     def _get_sensitivity_thresholds(self) -> tuple:
@@ -193,6 +192,9 @@ class PromptGuard:
         
         text = text.strip()
         
+        # Normalize for evasion resistance
+        normalized_text, _ = normalize(text)
+        
         # Check allowlist first
         if self._check_allowlist(text):
             return GuardResult(
@@ -222,8 +224,17 @@ class PromptGuard:
                 message="Content is blocklisted"
             )
         
-        # Check against patterns
+        # Check against patterns (both original and normalized text)
         matches = self.pattern_matcher.check_injection_patterns(text)
+        
+        # Also check normalized text for evasion attempts
+        if normalized_text != text:
+            normalized_matches = self.pattern_matcher.check_injection_patterns(normalized_text)
+            # Add matches found only in normalized form (evasion detected)
+            existing_threats = {m[0].lower() for m in matches}
+            for match_text, threat_level, pos in normalized_matches:
+                if match_text.lower() not in existing_threats:
+                    matches.append((match_text, threat_level, pos))
         
         # Check custom patterns
         for pattern, threat_level in self.custom_patterns:
