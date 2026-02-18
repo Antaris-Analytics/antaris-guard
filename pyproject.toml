@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "antaris-guard"
-version = "1.1.0"
+version = "1.9.3"
 description = "Security and prompt injection detection for AI agents. Zero dependencies."
 readme = "README.md"
 license = {text = "Apache-2.0"}
@@ -26,6 +26,12 @@ classifiers = [
     "Topic :: Security",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
+
+[project.optional-dependencies]
+mcp = ["mcp>=1.0.0"]
+
+[project.scripts]
+antaris-guard-mcp = "antaris_guard.mcp_server:main"
 
 [project.urls]
 Homepage = "https://github.com/Antaris-Analytics/antaris-guard"
