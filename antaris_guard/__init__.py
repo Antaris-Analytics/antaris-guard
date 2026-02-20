@@ -24,7 +24,7 @@ Sprint 4 — Policy composition DSL:
     guard = PromptGuard(policy=policy)
 """
 
-__version__ = "1.9.3"
+__version__ = "2.2.0"
 
 # MCP server integration (optional — requires `pip install mcp`)
 try:
@@ -50,6 +50,18 @@ from .conversation import ConversationGuard, ConversationResult
 
 # Compliance templates (Sprint 10)
 from .compliance import ComplianceTemplate
+
+# Stateful conversation policies (Sprint 2.5)
+from .conversation_state import ConversationStateStore, ConversationState, MessageRecord
+from .policies import (
+    StatefulPolicy,
+    StatefulPolicyResult,
+    EscalationPolicy,
+    BurstPolicy,
+    BoundaryTestPolicy,
+    ConversationCostCapPolicy,
+    CompositeStatefulPolicy,
+)
 
 # Policy composition (Sprint 4)
 from .policy import (
@@ -110,6 +122,17 @@ __all__ = [
     "ConversationResult",
     # Compliance templates (Sprint 10)
     "ComplianceTemplate",
+    # Stateful conversation policies (Sprint 2.5)
+    "ConversationStateStore",
+    "ConversationState",
+    "MessageRecord",
+    "StatefulPolicy",
+    "StatefulPolicyResult",
+    "EscalationPolicy",
+    "BurstPolicy",
+    "BoundaryTestPolicy",
+    "ConversationCostCapPolicy",
+    "CompositeStatefulPolicy",
     # Patterns / utilities
     "ThreatLevel",
     "SensitivityLevel",

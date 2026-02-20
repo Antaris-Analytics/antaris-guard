@@ -1,6 +1,7 @@
 """
 AuditLogger - Security event logging for compliance and monitoring.
 """
+import glob
 import json
 import os
 import time
@@ -263,59 +264,69 @@ class AuditLogger:
             List of matching AuditEvent objects
         """
         events = []
-        
+
         # Determine date range for log files to scan
         if start_time:
-            start_date = datetime.fromtimestamp(start_time)
+            start_date = datetime.fromtimestamp(start_time).date()
         else:
-            start_date = datetime.now() - timedelta(days=7)  # Default to last 7 days
-            
+            start_date = (datetime.now() - timedelta(days=7)).date()  # Default last 7 days
+
         if end_time:
-            end_date = datetime.fromtimestamp(end_time)
+            end_date = datetime.fromtimestamp(end_time).date()
         else:
-            end_date = datetime.now()
-        
-        # Scan log files in date range
-        current_date = start_date.date()
-        end_date_only = end_date.date()
-        
-        while current_date <= end_date_only:
-            log_file = self._get_log_file_for_date(datetime.combine(current_date, datetime.min.time()))
-            
-            if os.path.exists(log_file):
-                try:
-                    with open(log_file, 'r', encoding='utf-8') as f:
-                        for line in f:
-                            try:
-                                event_data = json.loads(line.strip())
-                                event = AuditEvent(**event_data)
-                                
-                                # Apply filters
-                                if start_time and event.timestamp < start_time:
-                                    continue
-                                if end_time and event.timestamp > end_time:
-                                    continue
-                                if event_type and event.event_type != event_type:
-                                    continue
-                                if severity and event.severity != severity:
-                                    continue
-                                if source_id and event.source_id != source_id:
-                                    continue
-                                
-                                events.append(event)
-                                
-                                # Check limit
-                                if len(events) >= limit:
-                                    return events
-                                    
-                            except (json.JSONDecodeError, TypeError):
+            end_date = datetime.now().date()
+
+        # Use glob to find ALL audit files (including size-rotated ones like
+        # audit_YYYY-MM-DD_<timestamp>.jsonl), then filter by date prefix.
+        all_log_files = glob.glob(os.path.join(self.log_dir, "audit_*.jsonl"))
+
+        # Filter to files whose date prefix falls within [start_date, end_date]
+        candidate_files = []
+        for log_file in sorted(all_log_files):
+            basename = os.path.basename(log_file)
+            # basename format: audit_YYYY-MM-DD.jsonl  OR  audit_YYYY-MM-DD_<ts>.jsonl
+            try:
+                # Strip leading "audit_" and trailing ".jsonl", then take first token
+                name_part = basename[len("audit_"):-len(".jsonl")]
+                date_str = name_part[:10]  # "YYYY-MM-DD"
+                file_date = datetime.strptime(date_str, "%Y-%m-%d").date()
+            except (ValueError, IndexError):
+                continue
+            if start_date <= file_date <= end_date:
+                candidate_files.append(log_file)
+
+        for log_file in candidate_files:
+            try:
+                with open(log_file, 'r', encoding='utf-8') as f:
+                    for line in f:
+                        try:
+                            event_data = json.loads(line.strip())
+                            event = AuditEvent(**event_data)
+
+                            # Apply filters
+                            if start_time and event.timestamp < start_time:
                                 continue
-                                
-                except (OSError, IOError):
-                    continue
-            
-            current_date += timedelta(days=1)
-        
+                            if end_time and event.timestamp > end_time:
+                                continue
+                            if event_type and event.event_type != event_type:
+                                continue
+                            if severity and event.severity != severity:
+                                continue
+                            if source_id and event.source_id != source_id:
+                                continue
+
+                            events.append(event)
+
+                            # Check limit
+                            if len(events) >= limit:
+                                return events
+
+                        except (json.JSONDecodeError, TypeError):
+                            continue
+
+            except (OSError, IOError):
+                continue
+
         return events
     
     def get_event_summary(self, hours: int = 24) -> Dict[str, Any]:
@@ -387,7 +398,7 @@ class AuditLogger:
         """Get audit logger statistics."""
         log_files = []
         total_size = 0
-        
+
         if os.path.exists(self.log_dir):
             for filename in os.listdir(self.log_dir):
                 if filename.startswith('audit_') and filename.endswith('.jsonl'):
@@ -402,7 +413,7 @@ class AuditLogger:
                         })
                     except (OSError, IOError):
                         continue
-        
+
         return {
             'enabled': self.enabled,
             'log_dir': self.log_dir,
@@ -413,3 +424,63 @@ class AuditLogger:
             'total_size_bytes': total_size,
             'log_files': log_files
         }
+
+    # ------------------------------------------------------------------
+    # Sprint 2.5 — Policy decision audit trail
+    # ------------------------------------------------------------------
+
+    def log_policy_decision(
+        self,
+        conversation_id: str,
+        policy_name: str,
+        decision: str,
+        reason: str,
+        evidence: Optional[Dict[str, Any]] = None,
+        source_id: Optional[str] = None,
+        text_sample: Optional[str] = None,
+    ) -> None:
+        """
+        Log a structured policy decision for compliance audit.
+
+        Every guard decision (allow/deny/modify) that passes through a
+        stateful conversation policy is recorded in append-only JSONL format.
+        The resulting entries are compliance-ready and suitable for SIEM
+        ingestion.
+
+        Parameters
+        ----------
+        conversation_id:
+            Conversation this decision belongs to.
+        policy_name:
+            Name of the policy that made the decision.
+        decision:
+            ``"allow"`` or ``"deny"``.
+        reason:
+            Human-readable explanation from the policy.
+        evidence:
+            Supporting dict (counts, thresholds, etc.) from
+            :attr:`~antaris_guard.policies.StatefulPolicyResult.evidence`.
+        source_id:
+            Optional source/user identifier.
+        text_sample:
+            Optional short text snippet (truncated to 200 chars for privacy).
+        """
+        sample = (text_sample or "")[:200]
+        severity = "high" if decision == "deny" else "low"
+        action = "blocked" if decision == "deny" else "allowed"
+
+        self.log_event(
+            event_type="policy_decision",
+            severity=severity,
+            action=action,
+            details={
+                "conversation_id": conversation_id,
+                "policy_name": policy_name,
+                "decision": decision,
+                "reason": reason,
+                "evidence": evidence or {},
+                "text_sample": sample,
+            },
+            source_id=source_id,
+            metadata={"sprint": "2.5", "audit_type": "stateful_policy"},
+        )

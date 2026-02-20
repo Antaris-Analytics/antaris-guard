@@ -4,6 +4,42 @@ All notable changes to antaris-guard will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
+## [2.2.0] - 2026-02-20
+
+### Added — Sprint 2.5: Conversation-Level Guard Policies
+
+- **`ConversationStateStore`** (`conversation_state.py`) — thread-safe in-memory per-conversation state with TTL eviction and message history
+- **`StatefulPolicy`** abstract base class — conversation-aware policies that track state ACROSS a conversation window
+- **`EscalationPolicy`** — blocks when N hostile messages accumulate in a sliding window (escalation detection)
+- **`BurstPolicy`** — blocks when a conversation exceeds a message-per-timewindow rate (burst detection)
+- **`BoundaryTestPolicy`** — detects and blocks repeated boundary-testing patterns (suspicious messages following prior threats)
+- **`ConversationCostCapPolicy`** — per-conversation cost cap; blocks when cumulative spend exceeds a USD threshold
+- **`CompositeStatefulPolicy`** — boolean AND / OR composition of stateful policies with short-circuit evaluation (`&`, `|` operators)
+- **`PromptGuard.check()`** — new entry point accepting `conversation_id`; layers stateful policy evaluation on top of the existing pattern scan
+- **`PromptGuard.add_stateful_policy()`** — attach a `StatefulPolicy` to a guard instance
+- **`AuditLogger.log_policy_decision()`** — compliance-ready JSONL audit trail entry: timestamp, conversation_id, policy_name, decision, evidence
+- **`PromptGuard(audit_logger=...)`** — optional `AuditLogger` wired into `check()` for automatic per-decision audit logging
+- 49 new tests (`tests/test_conversation_policies.py`): state store, all policy types, composition, `Guard.check()` integration, audit trail, state preservation
+
+### Behaviour
+- Conversation state is in-memory only (not persisted); isolated per `conversation_id`
+- State is preserved through live policy swaps (shared `ConversationStateStore`)
+- TTL-based conversation cleanup (default 1 hour idle)
+
+## [2.0.0] - 2026-02-18
+
+### Added — Antaris Suite 2.0 GA
+- **MCP Server** (`mcp_server.py`) — expose guard as MCP tools via `create_server` / `run_server`; tools: `check_safety`, `redact_pii`, `get_security_posture`
+- **Policy Composition** — `GuardPolicy`, `RateLimitPolicy`, `ContentFilterPolicy`, `CostCapPolicy`, `CompositePolicy`; `PolicyRegistry`; serialization to/from file
+- **Conversation Guard** — `ConversationGuard` for multi-turn context-aware threat detection
+- **Evasion Resistance** — adversarial normalization, homoglyph/Unicode bypass detection
+- **Behavior Tracking** — per-source `escalation_count`, trust exploitation guard
+- **Compliance module** — `ComplianceChecker` for GDPR/CCPA/HIPAA PII policy audit
+- **Reputation module** — `ReputationManager` per-source trust scoring
+- `get_security_posture()` — real-time security health report with recommendations
+- `get_pattern_stats()` — pattern hit distribution and top-n pattern analytics
+- 379 tests + 92 subtests (all passing, 1 skipped pending MCP package install)
+
 ## [1.0.0] - 2026-02-17
 
 ### Production Release
