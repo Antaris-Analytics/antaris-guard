@@ -10,7 +10,14 @@ Pattern-based threat detection, PII redaction, multi-turn conversation analysis,
 [![Python 3.9+](https://img.shields.io/badge/python-3.9%2B-blue.svg)](https://www.python.org/downloads/)
 [![Zero Dependencies](https://img.shields.io/badge/dependencies-zero-green.svg)](https://pypi.org/project/antaris-guard/)
 
-## What's New in v2.0.0
+## What's New in v2.2.0 (antaris-suite 3.0)
+
+- **`GuardConfig.fail_closed_on_crash`** — set `True` for public-facing deployments; crash in block mode → DENY + CRITICAL telemetry (default `False` preserves existing fail-open behaviour)
+- **Stateful policies** — escalation, burst detection, boundary testing, conversation cost caps; all thread-safe
+- **ConversationCostCapPolicy** — checks budget *before* recording to avoid charging denied requests
+- **Policy file watcher** — daemon thread reloads policies on file change, no restart required
+
+
 
 - **MCP Server** — expose guard as MCP tools via `create_mcp_server()` (requires `pip install mcp`); tools: `check_safety`, `redact_pii`, `get_security_posture`
 - **Policy composition DSL** — compose and persist security policies: `rate_limit_policy(10, per="minute") & content_filter_policy("pii")`; serialize to/from JSON files; `PolicyRegistry` for named policies
