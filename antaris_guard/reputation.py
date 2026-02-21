@@ -15,6 +15,7 @@ import time
 from typing import Dict, Optional, Any, List
 from dataclasses import dataclass, asdict
 from .utils import atomic_write_json
+from .locking import FileLock
 
 logger = logging.getLogger(__name__)
 
@@ -84,30 +85,44 @@ class ReputationTracker:
         self.store_path = store_path
         self.initial_trust = max(0.0, min(1.0, initial_trust))
         self.profiles: Dict[str, ReputationProfile] = {}
+        self._last_save: float = 0.0
+        # FileLock prevents multi-process read-modify-write races (Gemini review)
+        self._file_lock = FileLock(store_path, timeout=10.0)
         self._load()
     
     def _load(self) -> None:
-        """Load profiles from disk."""
+        """Load profiles from disk (file-locked for multi-process safety)."""
         if not os.path.exists(self.store_path):
             return
         try:
-            with open(self.store_path, 'r') as f:
-                data = json.load(f)
+            with self._file_lock:
+                with open(self.store_path, 'r') as f:
+                    data = json.load(f)
             for source_id, profile_data in data.get('profiles', {}).items():
                 self.profiles[source_id] = ReputationProfile(**profile_data)
         except (json.JSONDecodeError, TypeError, KeyError):
             pass
     
-    def _save(self) -> None:
-        """Save profiles to disk (atomic write)."""
+    def _save(self, force: bool = False) -> None:
+        """Save profiles to disk (file-locked atomic write).
+
+        Wraps the write in FileLock to prevent multi-process races where
+        two agents sharing the same Guard config can overwrite each other's
+        reputation increments.  Writes are throttled to at most once every
+        5 seconds; pass ``force=True`` to bypass.
+        """
+        now = time.time()
+        if not force and now - self._last_save < 5.0:
+            return
         data = {
             'profiles': {sid: asdict(p) for sid, p in self.profiles.items()},
-            'saved_at': time.time(),
+            'saved_at': now,
         }
         try:
-            atomic_write_json(self.store_path, data)
+            with self._file_lock:
+                atomic_write_json(self.store_path, data)
+            self._last_save = now
         except OSError:
-            # atomic_write_json already logged the error
             pass
     
     def _get_or_create(self, source_id: str) -> ReputationProfile:
@@ -203,7 +218,18 @@ class ReputationTracker:
             )
             profile.escalation_count += 1
             profile.last_blocked_time = now
-        
+
+        # Apply blocked penalty if request was actually blocked, regardless of
+        # threat_level string — handles rule-based blocks that override scores.
+        if was_blocked and threat_level != "blocked":
+            profile.blocked_requests += 1
+            profile.trust_score = max(
+                self.MIN_TRUST,
+                profile.trust_score - self.BLOCKED_PENALTY
+            )
+            profile.escalation_count += 1
+            profile.last_blocked_time = now
+
         self._save()
         return profile
     
@@ -291,7 +317,7 @@ class ReputationTracker:
             profile.trust_score = self.initial_trust
             profile.escalation_count = 0
             profile.decay_applied = 0.0
-            self._save()
+            self._save(force=True)
     
     def remove_source(self, source_id: str) -> bool:
         """
@@ -303,7 +329,7 @@ class ReputationTracker:
         """
         if source_id in self.profiles:
             del self.profiles[source_id]
-            self._save()
+            self._save(force=True)
             return True
         return False
     

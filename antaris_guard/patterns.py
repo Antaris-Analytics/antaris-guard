@@ -170,6 +170,81 @@ AGGRESSIVE_INJECTION_PATTERNS = [
 ]
 
 
+MULTILINGUAL_INJECTION_PATTERNS = [
+    # ── Spanish ──────────────────────────────────────────────────────────────
+    # Ignore instructions
+    (r"(?i)ignora\s+(?:todas?\s+)?(?:las?\s+)?instrucciones?\s+anteriores?", ThreatLevel.BLOCKED),
+    # System prompt override
+    (r"(?i)ignora\s+(?:tu\s+)?(?:prompt\s+del?\s+sistema|instrucciones?\s+del?\s+sistema)", ThreatLevel.BLOCKED),
+    # Act as / pretend to be
+    (r"(?i)act[úu]a\s+(?:como|si\s+fueras?)", ThreatLevel.SUSPICIOUS),
+    (r"(?i)h[aá]zte\s+pasar\s+por", ThreatLevel.SUSPICIOUS),
+    (r"(?i)finge\s+(?:que\s+)?(?:eres?|ser)", ThreatLevel.SUSPICIOUS),
+    # Forget your instructions
+    (r"(?i)olvida\s+(?:todas?\s+)?(?:tus?\s+)?instrucciones?", ThreatLevel.BLOCKED),
+    (r"(?i)olvida\s+(?:lo\s+que\s+)?(?:te\s+)?(?:dijeron|programaron)", ThreatLevel.BLOCKED),
+    # New persona
+    (r"(?i)eres?\s+(?:ahora\s+)?(?:una?\s+)?(?:nueva?\s+)?(?:persona|personaje|entidad|ia|asistente)\s+(?:diferente|sin\s+restricciones)", ThreatLevel.SUSPICIOUS),
+    (r"(?i)tu\s+nueva?\s+personalidad\s+es", ThreatLevel.SUSPICIOUS),
+
+    # ── French ───────────────────────────────────────────────────────────────
+    # Ignore instructions
+    (r"(?i)ignor(?:e|ez|ons)\s+(?:toutes?\s+)?(?:les?\s+)?instructions?\s+(?:pr[eé]c[eé]dentes?|ant[eé]rieures?)", ThreatLevel.BLOCKED),
+    # System prompt override
+    (r"(?i)ignor(?:e|ez)\s+(?:votre?\s+)?(?:prompt\s+syst[eè]me|instructions?\s+syst[eè]me)", ThreatLevel.BLOCKED),
+    # Act as / pretend to be
+    (r"(?i)agis\s+(?:comme|en\s+tant\s+que)", ThreatLevel.SUSPICIOUS),
+    (r"(?i)fais\s+semblant\s+d['\u2019]?[eê]tre", ThreatLevel.SUSPICIOUS),
+    (r"(?i)pr[eé]tends?\s+(?:que\s+tu\s+es|[eê]tre)", ThreatLevel.SUSPICIOUS),
+    # Forget your instructions
+    (r"(?i)oubli(?:e|ez)\s+(?:toutes?\s+)?(?:tes?\s+|vos?\s+)?instructions?", ThreatLevel.BLOCKED),
+    (r"(?i)oubli(?:e|ez)\s+(?:ce\s+qu['\u2019]?on\s+t['\u2019]?a\s+dit|ta\s+programmation)", ThreatLevel.BLOCKED),
+    # New persona
+    (r"(?i)tu\s+es\s+(?:maintenant\s+)?(?:un[e]?\s+)?(?:nouveau[x]?\s+|nouvelle\s+)?(?:personne|personnage|ia|assistant[e]?)\s+(?:diff[eé]rent[e]?|sans\s+restrictions?)", ThreatLevel.SUSPICIOUS),
+
+    # ── German ───────────────────────────────────────────────────────────────
+    # Ignore instructions
+    (r"(?i)ignoriere\s+(?:alle?\s+)?(?:vorherigen?\s+)?Anweisungen?", ThreatLevel.BLOCKED),
+    (r"(?i)ignoriere\s+(?:deine\s+)?(?:System-?)?(?:Anweisungen?|Vorgaben?)", ThreatLevel.BLOCKED),
+    # System prompt override
+    (r"(?i)ignoriere\s+(?:deinen?\s+)?System-?(?:Prompt|Anweisung)", ThreatLevel.BLOCKED),
+    # Act as / pretend to be
+    (r"(?i)tu\s+(?:so\s+)?als\s+(?:ob\s+)?(?:w[aä]rst?|sei[s]?t)", ThreatLevel.SUSPICIOUS),
+    (r"(?i)spiele\s+(?:die\s+Rolle\s+(?:von|eines?)\s+|als?\s+)", ThreatLevel.SUSPICIOUS),
+    (r"(?i)so\s+als\s+w[aä]r(?:st|e)\s+du", ThreatLevel.SUSPICIOUS),
+    # Forget your instructions
+    (r"(?i)vergiss\s+(?:alle?\s+)?(?:deine\s+)?Anweisungen?", ThreatLevel.BLOCKED),
+    (r"(?i)vergiss\s+(?:was|alles)\s+(?:man\s+dir|dir\s+gesagt)", ThreatLevel.BLOCKED),
+    # New persona
+    (r"(?i)du\s+bist\s+(?:jetzt\s+)?(?:ein[e]?\s+)?(?:neue[rs]?\s+)?(?:Assistent|KI|Person|Charakter)\s+(?:ohne\s+Einschr[aä]nkungen?|anderer?\s+Art)", ThreatLevel.SUSPICIOUS),
+
+    # ── Portuguese ───────────────────────────────────────────────────────────
+    # Ignore instructions
+    (r"(?i)ignor(?:e|a)\s+(?:todas?\s+)?(?:as?\s+)?instru[cç][oõ]es?\s+anteriores?", ThreatLevel.BLOCKED),
+    # System prompt override
+    (r"(?i)ignor(?:e|a)\s+(?:o\s+)?(?:prompt\s+do\s+sistema|instru[cç][oõ]es?\s+do\s+sistema)", ThreatLevel.BLOCKED),
+    # Act as / pretend to be
+    (r"(?i)aja\s+(?:como|se\s+fosse)", ThreatLevel.SUSPICIOUS),
+    (r"(?i)finja\s+(?:que\s+[eé]\s+|ser\s+)", ThreatLevel.SUSPICIOUS),
+    (r"(?i)fa[zç]a\s+de\s+conta\s+que\s+[eé]", ThreatLevel.SUSPICIOUS),
+    # Forget your instructions
+    (r"(?i)esque[cç]a\s+(?:todas?\s+)?(?:as?\s+)?instru[cç][oõ]es?", ThreatLevel.BLOCKED),
+    (r"(?i)esque[cç]a\s+(?:o\s+que\s+(?:lhe\s+)?(?:disseram|programaram))", ThreatLevel.BLOCKED),
+    # New persona
+    (r"(?i)(?:voc[eê]\s+[eé]|tu\s+[eé]s?)\s+(?:agora\s+)?(?:um[a]?\s+)?(?:nova?\s+)?(?:pessoa|personagem|ia|assistente)\s+(?:diferente|sem\s+restri[cç][oõ]es?)", ThreatLevel.SUSPICIOUS),
+]
+"""
+Multi-language prompt injection patterns (Spanish, French, German, Portuguese).
+
+Covers the core injection archetypes in each language:
+- Ignore instructions
+- System prompt override
+- Act as / pretend to be
+- Forget instructions
+- New persona
+"""
+
+
 class PatternMatcher:
     """
     Compiled pattern matcher for efficient regex operations.
@@ -181,19 +256,31 @@ class PatternMatcher:
     
     def __init__(self, injection_patterns: Optional[List[Tuple[str, ThreatLevel]]] = None,
                  pii_patterns: Optional[List[Tuple[str, str]]] = None,
-                 version: Optional[str] = None):
+                 version: Optional[str] = None,
+                 include_multilingual: bool = True):
         """
         Initialize PatternMatcher.
-        
+
         Args:
             injection_patterns: Custom injection patterns as (regex_str, ThreatLevel) tuples.
-                                Defaults to PROMPT_INJECTION_PATTERNS.
+                                Defaults to PROMPT_INJECTION_PATTERNS (+ multilingual when
+                                ``include_multilingual=True``).
             pii_patterns: Custom PII patterns as (regex_str, pii_type) tuples.
                           Defaults to PII_PATTERNS.
             version: Pattern set version string. Defaults to PATTERN_VERSION.
+            include_multilingual: When ``True`` (the default) and *injection_patterns* is
+                                  not explicitly overridden, append
+                                  :data:`MULTILINGUAL_INJECTION_PATTERNS` to the built-in
+                                  injection pattern set.  Set to ``False`` to opt out.
         """
         self.pattern_version = version or PATTERN_VERSION
-        self._raw_injection = injection_patterns if injection_patterns is not None else PROMPT_INJECTION_PATTERNS
+        if injection_patterns is not None:
+            self._raw_injection = injection_patterns
+        else:
+            base = list(PROMPT_INJECTION_PATTERNS)
+            if include_multilingual:
+                base = base + MULTILINGUAL_INJECTION_PATTERNS
+            self._raw_injection = base
         self._raw_pii = pii_patterns if pii_patterns is not None else PII_PATTERNS
         self.injection_patterns: List[Tuple[Pattern[str], ThreatLevel]] = []
         self.pii_patterns: List[Tuple[Pattern[str], str]] = []

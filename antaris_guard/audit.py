@@ -3,12 +3,15 @@ AuditLogger - Security event logging for compliance and monitoring.
 """
 import glob
 import json
+import logging
 import os
 import time
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any
 from dataclasses import dataclass, asdict
 from .patterns import ThreatLevel
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -83,7 +86,14 @@ class AuditLogger:
         return file_date != current_date
     
     def _rotate_log_if_needed(self) -> None:
-        """Rotate log file if necessary."""
+        """Rotate log file if necessary.
+
+        After updating ``current_log_file``, the new path is immediately
+        created (empty) on disk so that any ``log_event()`` call that arrives
+        before the first real write always has a valid, existing destination.
+        This closes the window between the path update and the first ``open``
+        in ``log_event``.
+        """
         if self._should_rotate_log():
             # Archive current file if it's large
             if os.path.exists(self.current_log_file):
@@ -93,9 +103,18 @@ class AuditLogger:
                     base_name = os.path.splitext(self.current_log_file)[0]
                     archived_name = f"{base_name}_{timestamp}.jsonl"
                     os.rename(self.current_log_file, archived_name)
-            
-            # Initialize new log file
+
+            # Update the active path and immediately touch the new file so it
+            # exists on disk before any concurrent log_event() call arrives.
             self._initialize_log_file()
+            try:
+                with open(self.current_log_file, 'a', encoding='utf-8'):
+                    pass  # create file; no content to write
+            except OSError as exc:
+                logger.error(
+                    "AuditLogger: could not create new log file %r after rotation: %s",
+                    self.current_log_file, exc,
+                )
     
     def enable(self) -> None:
         """Enable audit logging."""
@@ -142,9 +161,13 @@ class AuditLogger:
                 json.dump(asdict(event), f)
                 f.write('\n')
                 f.flush()
-        except (OSError, IOError):
-            # Fail silently if logging fails
-            pass
+        except (OSError, IOError) as exc:
+            # Audit write failures must never be invisible — an operator who
+            # can't see that events are being dropped has no security posture.
+            logger.error(
+                "AuditLogger: failed to write %s event (severity=%s) to %r: %s",
+                event_type, severity, self.current_log_file, exc,
+            )
     
     def log_guard_analysis(self, threat_level: ThreatLevel, text_sample: str, 
                           matches: List[Dict], source_id: Optional[str] = None,

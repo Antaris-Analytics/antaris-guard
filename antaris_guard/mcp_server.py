@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import json
 import sys
+import threading
 from typing import Any, Dict
 
 # ---------------------------------------------------------------------------
@@ -46,6 +47,10 @@ from .content import ContentFilter
 # ---------------------------------------------------------------------------
 _guard: PromptGuard | None = None
 _filter: ContentFilter | None = None
+# Thread-safe access to the shared guard instance.
+# Protects the temporary sensitivity-override pattern in _check_safety_impl
+# from racing under concurrent MCP transports (e.g. SSE).
+_guard_lock = threading.Lock()
 
 
 def _get_guard() -> PromptGuard:
@@ -95,8 +100,18 @@ def _check_safety_impl(text: str, sensitivity: str = "balanced") -> Dict[str, An
     if sensitivity not in _VALID_SENSITIVITIES:
         sensitivity = SensitivityLevel.BALANCED
 
-    guard = PromptGuard(sensitivity=sensitivity)
-    result = guard.analyze(text)
+    # Use the shared singleton so analysis history accumulates and
+    # get_security_posture() reflects actual MCP tool call history.
+    # _guard_lock ensures the temporary sensitivity override is thread-safe
+    # under concurrent MCP transports (stdio and SSE).
+    guard = _get_guard()
+    with _guard_lock:
+        original_sensitivity = guard.sensitivity
+        guard.sensitivity = sensitivity
+        try:
+            result = guard.analyze(text)
+        finally:
+            guard.sensitivity = original_sensitivity
 
     return {
         "safe": result.is_safe,

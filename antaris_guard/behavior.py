@@ -74,27 +74,63 @@ class BehaviorAnalyzer:
         self.interactions: Dict[str, list] = {}
         # (source_id, alert_type) → last alert timestamp (in-memory only)
         self._last_alerts: Dict[tuple, float] = {}
+        # Throttle disk writes: only flush if ≥5 s have elapsed since last save
+        self._last_save: float = 0.0
         self._load()
     
     def _load(self) -> None:
-        """Load interaction history from disk."""
+        """Load interaction history from disk.
+
+        If the store file is corrupt (truncated write, disk error, etc.),
+        logs a WARNING and preserves the corrupt file for forensic recovery
+        rather than silently discarding historical threat data.  Silently
+        reinitializing would allow an attacker who has accumulated escalation
+        flags across many interactions to start with a clean slate.
+        """
         if not os.path.exists(self.store_path):
             return
         try:
             with open(self.store_path, 'r') as f:
                 data = json.load(f)
             self.interactions = data.get('interactions', {})
-        except (json.JSONDecodeError, TypeError):
-            pass
+        except (json.JSONDecodeError, TypeError) as exc:
+            # Back up the corrupt file so operators can inspect it.
+            backup_path = self.store_path + ".corrupt"
+            try:
+                os.replace(self.store_path, backup_path)
+                logger.warning(
+                    "BehaviorAnalyzer: corrupt behavior store at %r — "
+                    "backed up to %r and reinitializing from empty. "
+                    "Investigate the backup; threat history has been lost. "
+                    "Error: %s",
+                    self.store_path, backup_path, exc,
+                )
+            except OSError as rename_err:
+                logger.warning(
+                    "BehaviorAnalyzer: corrupt behavior store at %r and "
+                    "could not back it up (%s). Reinitializing from empty. "
+                    "Error: %s",
+                    self.store_path, rename_err, exc,
+                )
+            # interactions stays as empty dict — already the default
     
-    def _save(self) -> None:
-        """Save interaction history to disk (atomic write)."""
+    def _save(self, force: bool = False) -> None:
+        """Save interaction history to disk (atomic write).
+
+        Writes are throttled to at most once every 5 seconds to reduce I/O
+        on high-traffic workloads.  Pass ``force=True`` to bypass the
+        throttle (used for explicit admin mutations like ``clear_source``).
+        """
+        now = time.time()
+        if not force and now - self._last_save < 5.0:
+            return
         data = {
             'interactions': self.interactions,
-            'saved_at': time.time(),
+            'saved_at': now,
         }
         try:
             atomic_write_json(self.store_path, data, indent=None)
+            self._last_save = now
         except OSError:
             # atomic_write_json already logged the error
             pass
@@ -283,7 +319,7 @@ class BehaviorAnalyzer:
         """Clear interaction history for a source."""
         if source_id in self.interactions:
             del self.interactions[source_id]
-            self._save()
+            self._save(force=True)
             return True
         return False
     

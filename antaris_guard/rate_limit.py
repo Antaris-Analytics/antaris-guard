@@ -9,6 +9,7 @@ import threading
 from typing import Dict, Optional, Any
 from dataclasses import dataclass
 from .utils import atomic_write_json
+from .locking import FileLock
 
 logger = logging.getLogger(__name__)
 
@@ -68,23 +69,29 @@ class RateLimiter:
         # Current bucket states
         self.buckets: Dict[str, BucketState] = {}
         
-        # Thread safety
+        # Thread safety (in-process)
         self.lock = threading.RLock()
-        
+        # File lock for multi-process safety (Gemini review fix)
+        self._file_lock = FileLock(state_file, timeout=10.0)
+
         # Last cleanup time
         self.last_cleanup = time.time()
-        
+
+        # Throttle disk writes: only flush if ≥5 s have elapsed since last save
+        self._last_save: float = 0.0
+
         # Load persisted state
         self._load_state()
     
     def _load_state(self) -> None:
-        """Load rate limiter state from file."""
+        """Load rate limiter state from file (file-locked for multi-process safety)."""
         if not os.path.exists(self.state_file):
             return
         
         try:
-            with open(self.state_file, 'r') as f:
-                data = json.load(f)
+            with self._file_lock:
+                with open(self.state_file, 'r') as f:
+                    data = json.load(f)
             
             # Load source configurations
             self.source_configs = data.get('source_configs', {})
@@ -103,13 +110,22 @@ class RateLimiter:
             # Start with empty state if loading fails
             pass
     
-    def _save_state(self) -> None:
-        """Save current state to file."""
+    def _save_state(self, force: bool = False) -> None:
+        """Save current state to file.
+
+        Writes are throttled to at most once every 5 seconds to reduce I/O
+        on high-traffic workloads.  Pass ``force=True`` to bypass the
+        throttle (used after explicit admin mutations).
+        """
+        now = time.time()
+        if not force and now - self._last_save < 5.0:
+            return
+
         data = {
             'source_configs': self.source_configs,
             'buckets': {}
         }
-        
+
         for source_id, bucket in self.buckets.items():
             data['buckets'][source_id] = {
                 'tokens': bucket.tokens,
@@ -117,11 +133,12 @@ class RateLimiter:
                 'requests_made': bucket.requests_made,
                 'first_request': bucket.first_request
             }
-        
+
         try:
-            atomic_write_json(self.state_file, data)
+            with self._file_lock:
+                atomic_write_json(self.state_file, data)
+            self._last_save = now
         except OSError:
-            # atomic_write_json already logged the error
             pass
     
     def set_source_config(self, source_id: str, requests_per_second: float, 
@@ -139,14 +156,14 @@ class RateLimiter:
                 'rps': requests_per_second,
                 'burst': burst_size
             }
-            self._save_state()
+            self._save_state(force=True)
     
     def remove_source_config(self, source_id: str) -> None:
         """Remove rate limit configuration for a source (falls back to defaults)."""
         with self.lock:
             self.source_configs.pop(source_id, None)
             self.buckets.pop(source_id, None)
-            self._save_state()
+            self._save_state(force=True)
     
     def _get_source_config(self, source_id: str) -> tuple:
         """Get rate limit configuration for a source."""

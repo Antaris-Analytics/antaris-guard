@@ -170,4 +170,5 @@ htmlcov/
 # Development
 NOTES.md
 TODO.md
-.DS_Store
+.DS_Store*.pyc
+*.pyo
