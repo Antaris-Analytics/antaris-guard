@@ -2,6 +2,16 @@
 
 **Zero-dependency Python package for AI agent security and prompt injection detection.**
 
+**v3.1.0** — Compaction recovery • Lifecycle hooks • Fail-closed semantics • 18 source files • 429 tests**
+
+## What's New in v3.1.0
+
+- **Compaction Recovery** — Guard state survives session resets. No security config loss during agent lifecycle.
+- **Fail-Closed Semantics** — If any guard component crashes, the default is UNSAFE=False (reject the prompt). Never silently pass dangerous input.
+- **Composable Policies** — Build security stacks from reusable rules: injection scanning, PII filtering, rate limits, evasion detection.
+- **Audit Trail** — Every security decision logged with evidence. Append-only records for compliance.
+- **Conversation Guards** — Detect jailbreak patterns across multi-turn dialogs, not just single prompts.
+
 Pattern-based threat detection, PII redaction, stateful conversation policies, policy composition, compliance templates, behavioral analysis, audit logging, and rate limiting — all using only the Python standard library. No API keys, no vector database, no cloud services.
 
 [![Tests](https://github.com/Antaris-Analytics/antaris-guard/actions/workflows/tests.yml/badge.svg)](https://github.com/Antaris-Analytics/antaris-guard/actions/workflows/tests.yml)
