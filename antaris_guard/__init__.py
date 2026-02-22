@@ -24,7 +24,7 @@ Sprint 4 — Policy composition DSL:
     guard = PromptGuard(policy=policy)
 """
 
-__version__ = "2.2.0"
+__version__ = "3.1.0"
 
 # MCP server integration (optional — requires `pip install mcp`)
 try:
