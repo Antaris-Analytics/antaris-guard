@@ -12,6 +12,12 @@
 - **Audit Trail** — Every security decision logged with evidence. Append-only records for compliance.
 - **Conversation Guards** — Detect jailbreak patterns across multi-turn dialogs, not just single prompts.
 
+## Phase 4 Roadmap
+
+**v3.2:** Session-scoped reputation tracking (learned behavior patterns per user/session)  
+**v4.0+:** Graph-based threat detection (track adversarial patterns across multiple sessions)  
+**v4.1+:** Adaptive policy learning (policies that improve based on real evasion attempts)
+
 Pattern-based threat detection, PII redaction, stateful conversation policies, policy composition, compliance templates, behavioral analysis, audit logging, and rate limiting — all using only the Python standard library. No API keys, no vector database, no cloud services.
 
 [![Tests](https://github.com/Antaris-Analytics/antaris-guard/actions/workflows/tests.yml/badge.svg)](https://github.com/Antaris-Analytics/antaris-guard/actions/workflows/tests.yml)
